@@ -72,126 +72,338 @@ Edita `appsettings.json` con tu endpoint de Azure OpenAI:
 }
 ```
 
-### Paso 4: Entender la Estructura del Código
+### Paso 4: Crear el Código del Group Chat Workflow
 
-Abre `Program.cs` y estudia cómo funciona la nueva API de Group Chat workflows. El código está organizado en 7 pasos claramente marcados:
+Abre `Program.cs` y sigue estos pasos para crear el workflow desde cero:
 
-#### **PASO 1: Configuración (líneas 16-46)**
+#### **Paso 4.1: Agregar los using directives**
 
-Carga la configuración desde `appsettings.json` y crea el cliente de Azure OpenAI con autenticación de Azure CLI:
+Al inicio del archivo, agrega las referencias necesarias:
+
+```csharp
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
+```
+
+💡 **¿Por qué?** Necesitamos Azure OpenAI para el cliente, Azure Identity para autenticación, Agents.AI para los agentes, Workflows para el group chat, y Extensions.AI para `AsIChatClient()`.
+
+---
+
+#### **Paso 4.2: Cargar la configuración**
+
+Carga el endpoint y deployment desde `appsettings.json`:
+
+```csharp
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddUserSecrets<Program>()
+    .Build();
+
+var endpoint = configuration["AzureOpenAI:Endpoint"] 
+    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:Endpoint");
+var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
+    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:DeploymentName");
+```
+
+💡 **¿Por qué?** Separamos la configuración del código para facilitar cambios entre ambientes.
+
+---
+
+#### **Paso 4.3: Crear el cliente de Azure OpenAI**
+
+Configura la autenticación con Azure CLI:
 
 ```csharp
 var chatClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential())
     .GetChatClient(deploymentName)
     .AsIChatClient();
+
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("         GROUP CHAT: Brainstorm ↔ Critic ↔ Synthesizer");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine();
 ```
 
-🔑 **Concepto clave**: `AsIChatClient()` convierte el ChatClient de Azure OpenAI en una interfaz estándar `IChatClient` que puede usar el framework de agentes.
+💡 **¿Por qué?** 
+- `AzureCliCredential()` usa tu sesión de `az login` (no necesitas API keys)
+- `GetChatClient()` obtiene el cliente para tu deployment
+- `AsIChatClient()` lo convierte a la interfaz estándar que usan los agentes
 
-#### **PASO 2: Crear Agentes Colaborativos (líneas 48-137)**
+---
 
-Define 3 agentes especializados usando `ChatClientAgent`:
+#### **Paso 4.4: Crear el primer agente (CopyWriter)**
+
+Define un agente que genera ideas creativas:
 
 ```csharp
-ChatClientAgent writer = new(chatClient,
-    "Instrucciones del agente...",
-    "CopyWriter",              // Nombre del agente
-    "Descripción del rol"      // Descripción para el manager
+ChatClientAgent brainstormAgent = new(chatClient,
+    """
+    Eres un agente creativo de copywriting. Tu rol en el grupo es:
+    
+    💡 TU FUNCIÓN:
+    - Generar ideas creativas e innovadoras
+    - Proponer eslóganes impactantes
+    - Ser conciso y directo
+    
+    Responde en español con máximo 100 palabras.
+    """,
+    "CopyWriter",
+    "Un agente creativo de generación de ideas"
 );
+
+Console.WriteLine("✓ CopyWriter creado - Generador de ideas");
 ```
 
-🔑 **Concepto clave**: Cada agente tiene instrucciones específicas que definen su personalidad y responsabilidades en el grupo. No hay keywords de consenso - la terminación se controla por el manager.
+💡 **¿Por qué?** `ChatClientAgent` recibe: el cliente, las instrucciones (su "personalidad"), un nombre para identificarlo, y una descripción.
 
-#### **PASO 3: Construir el Workflow (líneas 139-157)**
+---
 
-Usa `AgentWorkflowBuilder` con un manager de round-robin:
+#### **Paso 4.5: Crear el segundo agente (Reviewer)**
+
+Define un agente que evalúa y mejora:
 
 ```csharp
+ChatClientAgent criticAgent = new(chatClient,
+    """
+    Eres un agente crítico constructivo. Tu rol en el grupo es:
+    
+    🔍 TU FUNCIÓN:
+    - Evaluar las ideas propuestas
+    - Identificar debilidades y riesgos
+    - Sugerir mejoras específicas
+    - Ser constructivo, no destructivo
+    
+    Responde en español con máximo 100 palabras.
+    """,
+    "Reviewer",
+    "Un agente de evaluación y mejora"
+);
+
+Console.WriteLine("✓ Reviewer creado - Evaluador constructivo");
+```
+
+---
+
+#### **Paso 4.6: Crear el tercer agente (Synthesizer)**
+
+Define un agente que combina y resume:
+
+```csharp
+ChatClientAgent synthesizerAgent = new(chatClient,
+    """
+    Eres un agente sintetizador. Tu rol en el grupo es:
+    
+    🎯 TU FUNCIÓN:
+    - Combinar las mejores ideas del grupo
+    - Encontrar puntos en común
+    - Crear propuestas unificadas
+    - Facilitar el consenso
+    
+    Responde en español con máximo 100 palabras.
+    """,
+    "Synthesizer",
+    "Un agente de síntesis y consenso"
+);
+
+Console.WriteLine("✓ Synthesizer creado - Integrador de propuestas");
+Console.WriteLine();
+```
+
+---
+
+#### **Paso 4.7: Construir el workflow con AgentWorkflowBuilder**
+
+Crea el workflow de grupo con un manager de round-robin:
+
+```csharp
+Console.WriteLine("Configurando Group Chat Workflow...");
+
 var workflow = AgentWorkflowBuilder
     .CreateGroupChatBuilderWith(agents => 
         new RoundRobinGroupChatManager(agents) 
         { 
-            MaximumIterationCount = 5  // Máximo de turnos
+            MaximumIterationCount = 5
         })
-    .AddParticipants(writer, reviewer, synthesizer)
+    .AddParticipants(brainstormAgent, criticAgent, synthesizerAgent)
     .Build();
+
+Console.WriteLine("✓ Group Chat Workflow configurado");
+Console.WriteLine("  └─ Manager: RoundRobinGroupChatManager");
+Console.WriteLine("  └─ Máximo de iteraciones: 5");
+Console.WriteLine("  └─ Participantes: 3 agentes (round-robin)");
+Console.WriteLine();
 ```
 
-🔑 **Concepto clave**: La función lambda `agents =>` recibe la lista de participantes y devuelve un manager configurado. `RoundRobinGroupChatManager` alternará automáticamente entre los agentes.
+💡 **¿Por qué?**
+- `CreateGroupChatBuilderWith()` recibe una función lambda que configura el manager
+- `agents =>` recibe automáticamente la lista de participantes
+- `RoundRobinGroupChatManager` alterna entre agentes en orden circular
+- `MaximumIterationCount = 5` limita a 5 turnos totales
+- `AddParticipants()` agrega los 3 agentes al grupo
 
-#### **PASO 4: Definir la Tarea (líneas 159-167)**
+---
 
-Establece el problema que los agentes deben resolver:
+#### **Paso 4.8: Definir la tarea**
+
+Crea el mensaje inicial:
 
 ```csharp
 var problem = "Crea un eslogan para un vehículo eléctrico ecológico.";
+
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("                    TAREA A RESOLVER");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine(problem);
+Console.WriteLine();
+
 var messages = new List<ChatMessage> { 
     new(ChatRole.User, problem) 
 };
 ```
 
-#### **PASO 5: Ejecutar el Workflow con Streaming (líneas 169-248)**
+---
 
-Inicia la ejecución y procesa eventos en tiempo real:
+#### **Paso 4.9: Ejecutar el workflow con streaming**
+
+Inicia la ejecución y procesa eventos:
 
 ```csharp
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("                    CONVERSACIÓN DEL GRUPO");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine();
+
 StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
 await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
 
-await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+int turnCount = 0;
+List<ChatMessage>? finalConversation = null;
+
+await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
 {
     if (evt is AgentRunUpdateEvent update)
     {
-        // Mostrar respuestas de cada agente
         AgentRunResponse response = update.AsResponse();
+        
         foreach (ChatMessage message in response.Messages)
         {
-            Console.WriteLine($"[{update.ExecutorId}]: {message.Text}");
+            if (message.AuthorName != null)
+            {
+                turnCount++;
+                var emoji = update.ExecutorId switch
+                {
+                    "CopyWriter" => "💡",
+                    "Reviewer" => "🔍",
+                    "Synthesizer" => "🎯",
+                    _ => "👤"
+                };
+                
+                Console.WriteLine($"\n┌─── Turno {turnCount}: {emoji} {update.ExecutorId} ───");
+                Console.WriteLine("│");
+            }
+            
+            if (message.Text != null)
+            {
+                foreach (var line in message.Text.Split('\n'))
+                {
+                    Console.WriteLine($"│ {line}");
+                }
+            }
+        }
+        
+        if (response.Messages.Any())
+        {
+            Console.WriteLine("│");
+            Console.WriteLine("└────────────────────────────────────────────────────────────────");
         }
     }
     else if (evt is WorkflowOutputEvent output)
     {
-        // Workflow completado - guardar conversación
         finalConversation = output.As<List<ChatMessage>>();
         break;
     }
 }
 ```
 
-🔑 **Concepto clave**: 
-- `AgentRunUpdateEvent`: Se emite cada vez que un agente responde (puede haber múltiples eventos por turno si la respuesta es larga)
-- `WorkflowOutputEvent`: Se emite al final con toda la conversación como `List<ChatMessage>`
-
-#### **PASO 6: Mostrar Resumen (líneas 250-282)**
-
-Muestra la conversación final completa con todos los mensajes:
-
-```csharp
-foreach (var message in finalConversation)
-{
-    var author = message.AuthorName ?? "Usuario";
-    Console.WriteLine($"{emoji} [{author}]");
-    Console.WriteLine(message.Text);
-}
-```
-
-#### **PASO 7: Validación (líneas 284-295)**
-
-Confirma que el workflow funcionó correctamente con todos los componentes.
+💡 **¿Por qué?**
+- `InProcessExecution.StreamAsync()` ejecuta el workflow en este proceso
+- `TurnToken(emitEvents: true)` activa la emisión de eventos
+- `WatchStreamAsync()` devuelve eventos conforme ocurren
+- `AgentRunUpdateEvent` se emite por cada respuesta de agente
+- `WorkflowOutputEvent` se emite al final con toda la conversación
 
 ---
 
-#### **Diferencias Clave vs API Antigua**
+#### **Paso 4.10: Mostrar el resumen final**
 
-| Aspecto | API Antigua (AgentGroupChat) | API Nueva (AgentWorkflowBuilder) |
-|---------|------------------------------|-----------------------------------|
-| Constructor | `new AgentGroupChat(agent1, agent2)` | `AgentWorkflowBuilder.CreateGroupChatBuilderWith()` |
-| Manager | `SelectionStrategy` property | Factory function que crea el manager |
-| Terminación | `TerminationCondition` (múltiples tipos) | `MaximumIterationCount` en el manager |
-| Ejecución | `await foreach (var msg in chat.InvokeAsync())` | `StreamingRun` con eventos `WorkflowEvent` |
-| Agentes | `ChatCompletionAgent` | `ChatClientAgent` |
-| Autenticación | API Key en constructor | Azure CLI credential |
-| Output | Mensajes individuales | `WorkflowOutputEvent` con conversación completa |
+Muestra la conversación completa:
+
+```csharp
+Console.WriteLine();
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("                    CONVERSACIÓN FINAL");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+
+if (finalConversation != null)
+{
+    Console.WriteLine();
+    foreach (var message in finalConversation)
+    {
+        var author = message.AuthorName ?? "Usuario";
+        var emoji = author switch
+        {
+            "CopyWriter" => "💡",
+            "Reviewer" => "🔍",
+            "Synthesizer" => "🎯",
+            "Usuario" => "👤",
+            _ => "👤"
+        };
+        
+        Console.WriteLine($"{emoji} [{author}]");
+        Console.WriteLine(message.Text ?? "(sin contenido)");
+        Console.WriteLine("─────────────────────────────────────────────────────────────────");
+    }
+}
+
+Console.WriteLine();
+Console.WriteLine($"📊 Total de turnos: {turnCount}");
+Console.WriteLine($"👥 Participantes: CopyWriter, Reviewer, Synthesizer");
+Console.WriteLine();
+```
+
+---
+
+#### **Paso 4.11: Mostrar confirmación de éxito**
+
+Finaliza con validación:
+
+```csharp
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("                    WORKFLOW COMPLETADO");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine();
+Console.WriteLine("✓ Group Chat Workflow ejecutó conversación multi-agente");
+Console.WriteLine("✓ Cada agente participó según su rol (writer, reviewer, synthesizer)");
+Console.WriteLine("✓ RoundRobinGroupChatManager coordinó los turnos");
+Console.WriteLine("✓ Terminación por MaximumIterationCount");
+Console.WriteLine("✓ Eventos procesados con streaming en tiempo real");
+Console.WriteLine();
+```
+
+---
+
+#### **Resumen de lo que creaste:**
+
+✅ **3 agentes especializados** con roles complementarios  
+✅ **1 workflow de grupo** con manager de round-robin  
+✅ **Streaming de eventos** en tiempo real  
+✅ **Ejecución coordinada** con máximo 5 turnos  
+✅ **Visualización completa** de la conversación
 
 ### Paso 5: Ejecutar el Group Chat Workflow
 ✓ Reviewer creado - Evaluador constructivo
