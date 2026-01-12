@@ -428,27 +428,6 @@ Respondes siempre en español."
 
 **Pregunta de reflexión**: ¿Cómo cambia el estilo de las respuestas?
 
-### Experimento 2: Ajustar Temperature
-
-En `appsettings.json`, cambia `Temperature`:
-
-```json
-"Temperature": 0.0  // Respuestas más determinísticas y precisas
-"Temperature": 1.5  // Respuestas más creativas y variadas
-```
-
-**Pregunta de reflexión**: ¿Qué diferencias notas en las respuestas?
-
-### Experimento 3: Limitar MaxTokens
-
-Reduce `MaxTokens` en `appsettings.json`:
-
-```json
-"MaxTokens": 50  // Respuestas muy cortas
-```
-
-**Pregunta de reflexión**: ¿Cómo afecta esto al costo y la calidad?
-
 ---
 
 ## Solución de Problemas
@@ -539,7 +518,7 @@ En este laboratorio aprendiste:
 
 Ahora que tienes un agente funcional, estás listo para:
 
-1. **[Módulo 2: Function Tools](../../modulo-02-function-tools/)** - Agregar capacidades personalizadas a tu agente
+1. **[Módulo 2: Function Tools](../../../modulo-02-function-tools/)** - Agregar capacidades personalizadas a tu agente
 2. **Experimentar más**: Modifica las instrucciones, prueba diferentes temperaturas, agrega validación de entrada
 
 ---
