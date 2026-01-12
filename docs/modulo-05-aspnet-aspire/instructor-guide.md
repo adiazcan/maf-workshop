@@ -31,12 +31,11 @@ Al finalizar, los participantes podrán:
 
 ### Verificar con Anticipación
 
-```bash
-# Verificar que .NET Aspire está instalado en las máquinas
-dotnet workload list | grep aspire
+**Nota importante**: A partir de .NET Aspire 13.x, el workload ha sido deprecado. Los paquetes NuGet de Aspire se referencian directamente en los proyectos.
 
-# Si falta, instalarlo (puede tomar 5-10 minutos)
-dotnet workload install aspire
+```bash
+# Verificar que .NET 10 SDK está instalado
+dotnet --version  # Debe ser 10.0 o superior
 ```
 
 ### Materiales Necesarios
@@ -172,20 +171,13 @@ cd WebApi && dotnet user-secrets list
 dotnet user-secrets set "AzureOpenAI:ApiKey" "la-api-key"
 ```
 
-### Problema 3: Aspire workload no instalado
-
-**Síntoma**: Error al compilar AppHost
-
-**Solución**:
-```bash
-dotnet workload install aspire
-```
-
-### Problema 4: Timeout en respuestas
+### Problema 3: Timeout en respuestas
 
 **Causa**: Rate limiting de Azure OpenAI
 
 **Solución temporal**: Esperar 1 minuto entre requests o usar deployment con mayor quota
+
+---
 
 ---
 

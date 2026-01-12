@@ -5,21 +5,20 @@
 // meteorológica de manera amigable y conversacional.
 // =============================================================================
 
-using Microsoft.Agents.AI.Chat;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace AgentServices;
 
 /// <summary>
 /// Servicio que encapsula un agente especializado en consultas meteorológicas.
-/// Utiliza ChatCompletionAgent de Microsoft Agent Framework para generar
+/// Utiliza AIAgent de Microsoft Agent Framework para generar
 /// respuestas conversacionales sobre el clima.
 /// </summary>
 public class WeatherAgentService
 {
-    private readonly ChatCompletionAgent _agent;
+    private readonly AIAgent _agent;
     private readonly ILogger<WeatherAgentService> _logger;
     
     /// <summary>
@@ -45,21 +44,19 @@ public class WeatherAgentService
         """;
     
     /// <summary>
-    /// Constructor que configura el agente con el Kernel proporcionado.
+    /// Constructor que configura el agente con el cliente de chat proporcionado.
     /// </summary>
-    /// <param name="kernel">Kernel de Semantic Kernel configurado con Azure OpenAI</param>
+    /// <param name="chatClient">Cliente de chat configurado con Azure OpenAI</param>
     /// <param name="logger">Logger para registro de eventos</param>
-    public WeatherAgentService(Kernel kernel, ILogger<WeatherAgentService> logger)
+    public WeatherAgentService(IChatClient chatClient, ILogger<WeatherAgentService> logger)
     {
         _logger = logger;
         
-        // Crear el agente con configuración específica
-        _agent = new ChatCompletionAgent()
-        {
-            Name = "WeatherAgent",
-            Instructions = SystemInstructions,
-            Kernel = kernel
-        };
+        // Crear el agente usando el método de extensión CreateAIAgent del IChatClient
+        // Este patrón es el recomendado por Microsoft Agent Framework
+        _agent = chatClient.CreateAIAgent(
+            instructions: SystemInstructions,
+            name: "WeatherAgent");
         
         _logger.LogInformation("WeatherAgentService inicializado correctamente");
     }
@@ -73,21 +70,11 @@ public class WeatherAgentService
     {
         _logger.LogDebug("Consultando clima para ciudad: {City}", city);
         
-        // Crear historial de chat con la consulta del usuario
-        var chatHistory = new ChatHistory();
-        chatHistory.AddUserMessage($"¿Cómo está el clima en {city}?");
+        // Invocar al agente usando RunAsync con string input
+        // El agente maneja internamente la conversión a mensajes
+        var response = await _agent.RunAsync($"¿Cómo está el clima en {city}?");
+        var result = response.Text;
         
-        // Invocar al agente y obtener respuesta
-        var responses = new List<string>();
-        await foreach (var response in _agent.InvokeAsync(chatHistory))
-        {
-            if (response.Content is not null)
-            {
-                responses.Add(response.Content);
-            }
-        }
-        
-        var result = string.Join("", responses);
         _logger.LogDebug("Respuesta generada para {City}: {Length} caracteres", city, result.Length);
         
         return result;
@@ -102,18 +89,9 @@ public class WeatherAgentService
     {
         _logger.LogDebug("Procesando pregunta personalizada: {Question}", question);
         
-        var chatHistory = new ChatHistory();
-        chatHistory.AddUserMessage(question);
+        // Usar RunAsync directamente con el texto de la pregunta
+        var response = await _agent.RunAsync(question);
         
-        var responses = new List<string>();
-        await foreach (var response in _agent.InvokeAsync(chatHistory))
-        {
-            if (response.Content is not null)
-            {
-                responses.Add(response.Content);
-            }
-        }
-        
-        return string.Join("", responses);
+        return response.Text;
     }
 }

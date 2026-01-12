@@ -25,17 +25,8 @@ Antes de comenzar, verifica que tienes:
 - [x] VS Code o Visual Studio 2022
 - [x] Azure OpenAI deployment configurado
 - [x] API key de Azure OpenAI
-- [x] .NET Aspire workload instalado
 
-### Verificar .NET Aspire
-
-```bash
-# Verificar que .NET Aspire está instalado
-dotnet workload list
-
-# Si no aparece 'aspire', instalarlo:
-dotnet workload install aspire
-```
+**Nota**: A partir de .NET Aspire 13.x, no es necesario instalar un workload separado. Los paquetes NuGet de Aspire se referencian directamente en los proyectos.
 
 ---
 
@@ -124,7 +115,7 @@ dotnet run --project AppHost
 **Resultado esperado**:
 ```
 info: Aspire.Hosting.DistributedApplication[0]
-      Aspire version: 9.0.0
+      Aspire version: 13.1.0
 info: Aspire.Hosting.DistributedApplication[0]
       Distributed application starting.
 info: Aspire.Hosting.DistributedApplication[0]
@@ -366,7 +357,7 @@ Para el instructor:
 Al completar este lab has practicado:
 
 1. **ASP.NET Core Minimal APIs**: Endpoints REST concisos
-2. **Dependency Injection**: Inyección de Kernel y servicios
+2. **Dependency Injection**: Inyección de IChatClient y servicios
 3. **.NET Aspire Orchestration**: AppHost y dashboard
 4. **OpenTelemetry Integration**: Traces automáticos
 5. **Error Handling**: Manejo de errores HTTP

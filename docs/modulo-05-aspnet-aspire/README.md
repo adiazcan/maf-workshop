@@ -86,29 +86,36 @@ graph TD
 **WeatherAgentService.cs**:
 
 ```csharp
-using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
+using Microsoft.Extensions.AI;
 
 public class WeatherAgentService
 {
     private readonly ChatCompletionAgent _agent;
     
-    public WeatherAgentService(Kernel kernel)
+    public WeatherAgentService(IChatClient chatClient)
     {
-        _agent = new ChatCompletionAgent()
+        _agent = new ChatCompletionAgent(chatClient, "WeatherAgent")
         {
-            Name = "WeatherAgent",
-            Instructions = "Proporciona información del clima de manera amigable.",
-            Kernel = kernel
+            Instructions = "Proporciona información del clima de manera amigable."
         };
     }
     
     public async Task<string> GetWeatherAsync(string city)
     {
-        var chatHistory = new ChatHistory();
+        var chatHistory = new AgentChatHistory();
         chatHistory.AddUserMessage($"¿Cómo está el clima en {city}?");
         
-        var response = await _agent.InvokeAsync(chatHistory);
-        return response.Content;
+        var responses = new List<string>();
+        await foreach (var message in _agent.InvokeAsync(chatHistory))
+        {
+            if (message.Content is not null)
+            {
+                responses.Add(message.Content);
+            }
+        }
+        
+        return string.Join("", responses);
     }
 }
 ```
@@ -121,20 +128,23 @@ public class WeatherAgentService
 
 ```csharp
 using AgentServices;
-using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.OpenAI;
+using Microsoft.Extensions.AI;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configurar Kernel (compartido por todos los agentes)
-builder.Services.AddSingleton<Kernel>(sp =>
+// Configurar Chat Client (compartido por todos los agentes)
+builder.Services.AddSingleton<IChatClient>(sp =>
 {
-    var kernelBuilder = Kernel.CreateBuilder();
-    kernelBuilder.AddAzureOpenAIChatCompletion(
-        deploymentName: "gpt-5.2",
-        endpoint: builder.Configuration["AzureOpenAI:Endpoint"]!,
-        apiKey: builder.Configuration["AzureOpenAI:ApiKey"]!
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    
+    var chatClient = new AzureOpenAIChatClient(
+        endpoint: new Uri(configuration["AzureOpenAI:Endpoint"]!),
+        credential: configuration["AzureOpenAI:ApiKey"]!,
+        modelId: configuration["AzureOpenAI:DeploymentName"] ?? "gpt-4o"
     );
-    return kernelBuilder.Build();
+    
+    return chatClient;
 });
 
 // Registrar servicios de agentes
@@ -357,8 +367,8 @@ app.UseRateLimiter();
 
 ### "Agents not resolving in DI"
 
-**Causa**: Kernel no registrado como Singleton  
-**Solución**: `builder.Services.AddSingleton<Kernel>(...)`
+**Causa**: IChatClient no registrado como Singleton  
+**Solución**: `builder.Services.AddSingleton<IChatClient>(...)`
 
 ### "CORS errors"
 

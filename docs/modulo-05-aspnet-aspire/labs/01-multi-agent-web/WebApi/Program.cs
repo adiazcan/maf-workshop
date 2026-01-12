@@ -10,7 +10,10 @@
 // =============================================================================
 
 using AgentServices;
-using Microsoft.SemanticKernel;
+using Azure;
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Extensions.AI;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -45,12 +48,12 @@ builder.Logging.AddOpenTelemetry(logging =>
 });
 
 // -----------------------------------------------------------------------------
-// Configuración del Kernel de Semantic Kernel
+// Configuración del Chat Client de Microsoft Agent Framework
 // -----------------------------------------------------------------------------
-// El Kernel es el componente central que conecta con Azure OpenAI.
+// El IChatClient es el componente central que conecta con Azure OpenAI.
 // Se registra como Singleton para compartir la conexión entre servicios.
 
-builder.Services.AddSingleton<Kernel>(sp =>
+builder.Services.AddSingleton<IChatClient>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
     var logger = sp.GetRequiredService<ILogger<Program>>();
@@ -67,18 +70,19 @@ builder.Services.AddSingleton<Kernel>(sp =>
             "API key no encontrada. Configure AzureOpenAI:ApiKey o AZURE_OPENAI_API_KEY");
     
     logger.LogInformation(
-        "Configurando Kernel con endpoint: {Endpoint}, deployment: {Deployment}",
+        "Configurando Chat Client con endpoint: {Endpoint}, deployment: {Deployment}",
         endpoint, deploymentName);
     
-    // Construir el Kernel con Azure OpenAI
-    var kernelBuilder = Kernel.CreateBuilder();
-    kernelBuilder.AddAzureOpenAIChatCompletion(
-        deploymentName: deploymentName,
-        endpoint: endpoint,
-        apiKey: apiKey
+    // Crear el cliente de Azure OpenAI y obtener el chat client
+    var azureClient = new AzureOpenAIClient(
+        endpoint: new Uri(endpoint),
+        credential: new AzureKeyCredential(apiKey)
     );
     
-    return kernelBuilder.Build();
+    var chatClient = azureClient.GetChatClient(deploymentName);
+    
+    // Convertir a IChatClient de Microsoft.Extensions.AI
+    return chatClient.AsIChatClient();
 });
 
 // -----------------------------------------------------------------------------
@@ -183,9 +187,11 @@ app.MapPost("/api/chat/weather", async (
     catch (HttpRequestException ex)
     {
         logger.LogError(ex, "Error de conectividad con Azure OpenAI");
-        return Results.StatusCode(503, new ErrorResponse(
-            "service_unavailable",
-            "No se pudo conectar con el servicio de Azure OpenAI. Intente de nuevo más tarde."));
+        return Results.Json(
+            new ErrorResponse(
+                "service_unavailable",
+                "No se pudo conectar con el servicio de Azure OpenAI. Intente de nuevo más tarde."),
+            statusCode: 503);
     }
     catch (Exception ex)
     {
@@ -247,9 +253,11 @@ app.MapPost("/api/chat/summary", async (
     catch (HttpRequestException ex)
     {
         logger.LogError(ex, "Error de conectividad con Azure OpenAI");
-        return Results.StatusCode(503, new ErrorResponse(
-            "service_unavailable",
-            "No se pudo conectar con el servicio de Azure OpenAI. Intente de nuevo más tarde."));
+        return Results.Json(
+            new ErrorResponse(
+                "service_unavailable",
+                "No se pudo conectar con el servicio de Azure OpenAI. Intente de nuevo más tarde."),
+            statusCode: 503);
     }
     catch (Exception ex)
     {

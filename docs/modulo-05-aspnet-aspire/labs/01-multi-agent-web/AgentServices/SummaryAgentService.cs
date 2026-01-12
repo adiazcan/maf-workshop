@@ -5,21 +5,20 @@
 // y bien estructurados de textos largos.
 // =============================================================================
 
-using Microsoft.Agents.AI.Chat;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace AgentServices;
 
 /// <summary>
 /// Servicio que encapsula un agente especializado en generar resúmenes.
-/// Utiliza ChatCompletionAgent de Microsoft Agent Framework para procesar
+/// Utiliza AIAgent de Microsoft Agent Framework para procesar
 /// textos largos y generar resúmenes estructurados.
 /// </summary>
 public class SummaryAgentService
 {
-    private readonly ChatCompletionAgent _agent;
+    private readonly AIAgent _agent;
     private readonly ILogger<SummaryAgentService> _logger;
     
     /// <summary>
@@ -52,21 +51,18 @@ public class SummaryAgentService
         """;
     
     /// <summary>
-    /// Constructor que configura el agente con el Kernel proporcionado.
+    /// Constructor que configura el agente con el cliente de chat proporcionado.
     /// </summary>
-    /// <param name="kernel">Kernel de Semantic Kernel configurado con Azure OpenAI</param>
+    /// <param name="chatClient">Cliente de chat configurado con Azure OpenAI</param>
     /// <param name="logger">Logger para registro de eventos</param>
-    public SummaryAgentService(Kernel kernel, ILogger<SummaryAgentService> logger)
+    public SummaryAgentService(IChatClient chatClient, ILogger<SummaryAgentService> logger)
     {
         _logger = logger;
         
-        // Crear el agente con configuración específica
-        _agent = new ChatCompletionAgent()
-        {
-            Name = "SummaryAgent",
-            Instructions = SystemInstructions,
-            Kernel = kernel
-        };
+        // Crear el agente usando el patrón oficial de Microsoft Agent Framework
+        _agent = chatClient.CreateAIAgent(
+            instructions: SystemInstructions,
+            name: "SummaryAgent");
         
         _logger.LogInformation("SummaryAgentService inicializado correctamente");
     }
@@ -89,20 +85,10 @@ public class SummaryAgentService
             ? $"Resume el siguiente texto en aproximadamente {maxLength} palabras:\n\n{text}"
             : $"Resume el siguiente texto:\n\n{text}";
         
-        var chatHistory = new ChatHistory();
-        chatHistory.AddUserMessage(prompt);
+        // Invocar al agente usando RunAsync
+        var response = await _agent.RunAsync(prompt);
+        var result = response.Text;
         
-        // Invocar al agente y obtener respuesta
-        var responses = new List<string>();
-        await foreach (var response in _agent.InvokeAsync(chatHistory))
-        {
-            if (response.Content is not null)
-            {
-                responses.Add(response.Content);
-            }
-        }
-        
-        var result = string.Join("", responses);
         _logger.LogDebug("Resumen generado: {Length} caracteres", result.Length);
         
         return result;
@@ -129,18 +115,9 @@ public class SummaryAgentService
             {text}
             """;
         
-        var chatHistory = new ChatHistory();
-        chatHistory.AddUserMessage(prompt);
+        // Usar RunAsync directamente
+        var response = await _agent.RunAsync(prompt);
         
-        var responses = new List<string>();
-        await foreach (var response in _agent.InvokeAsync(chatHistory))
-        {
-            if (response.Content is not null)
-            {
-                responses.Add(response.Content);
-            }
-        }
-        
-        return string.Join("", responses);
+        return response.Text;
     }
 }
