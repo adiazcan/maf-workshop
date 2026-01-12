@@ -112,13 +112,10 @@ Implementa métricas, trazas distribuidas y dashboards para aplicaciones de agen
 - OpenTelemetry con MAF
 - Métricas de tokens y latencia
 - Distributed tracing
-- Azure Monitor + Application Insights
-- Alertas y workbooks
 
 **Labs**:
 - 01-metrics-tokens: Recolección de métricas básicas
 - 02-distributed-traces: Tracing multi-agente
-- 03-azure-monitor: Dashboards y alertas en Azure
 
 ---
 

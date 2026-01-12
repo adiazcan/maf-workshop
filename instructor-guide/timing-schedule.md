@@ -109,11 +109,9 @@ Inicio más tarde, breaks más cortos:
 | 10-30 min | Lab 01: Metrics and Tokens | 20 min |
 | 30-35 min | Checkpoint 1 | 5 min |
 | 35-55 min | Lab 02: Distributed Traces | 20 min |
-| 55-60 min | Demo: Azure Monitor Dashboard | 5 min |
+| 55-60 min | Checkpoint Final | 5 min |
 
 **Checkpoint**: 75% completan Labs 1-2
-
-**Nota**: Lab 03 (Azure Monitor completo) puede ser demo del instructor o ejercicio post-workshop para reducir tiempo.
 
 ---
 

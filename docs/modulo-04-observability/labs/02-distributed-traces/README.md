@@ -400,6 +400,6 @@ if (city == "error")
 
 ---
 
-## Siguiente Laboratorio
+## Próximos Pasos
 
-➡️ Continúa con [Lab 03: Azure Monitor](../03-azure-monitor/) para exportar telemetría a Application Insights y crear dashboards.
+Continúa con el [Módulo 5: Integración con ASP.NET Core y .NET Aspire](../../../modulo-05-aspnet-aspire) donde aprenderás a integrar observabilidad en aplicaciones web y aprovechar el dashboard de Aspire para monitoreo avanzado.

@@ -514,27 +514,13 @@ Implementa tracing distribuido en workflow multi-agente
 
 ---
 
-### [Lab 03: Azure Monitor](labs/03-azure-monitor/)
-**Duración**: 30 minutos
-
-Exporta telemetría a Azure Monitor y crea dashboards
-
-**Habilidades**:
-- Configurar Application Insights
-- Crear workbooks con KQL queries
-- Configurar alertas (latency > 5s, error rate > 5%)
-
----
-
 ## Checkpoint de Validación
 
 **Criterios de éxito**:
 - ✅ Métricas de tokens se muestran en consola
 - ✅ Traces muestran jerarquía de llamadas (parent → child spans)
-- ✅ Dashboard en Azure Monitor visualiza latencia y token usage
-- ✅ Alerta se dispara cuando latencia excede threshold
 
-**Meta**: 75% de participantes completan los 3 labs
+**Meta**: 75% de participantes completan los 2 labs
 
 ---
 

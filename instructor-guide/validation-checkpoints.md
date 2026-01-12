@@ -296,31 +296,6 @@ Instructor: "Alguien comparta pantalla mostrando la jerarquía"
 
 ---
 
-### Checkpoint 4.3: Azure Monitor (Opcional/Demo)
-
-**Criterio de Éxito**:
-> Dashboard en Azure Monitor muestra métricas del agente.
-
-**Método de Validación**: Instructor Demo
-
-```
-Instructor: [Compartir pantalla de Azure Portal]
-1. Abrir Application Insights
-2. Ir a "Metrics"
-3. Mostrar gráfico de token usage
-4. Mostrar gráfico de latency
-
-[Demo 5 minutos]
-
-Instructor: "El código para configurar esto está en el lab 03. Quien quiera implementarlo, está todo documentado."
-```
-
-**Threshold**: N/A (conceptual)
-
-**Tiempo**: 5 minutos (demo únicamente)
-
----
-
 ## Módulo 5: ASP.NET + Aspire
 
 ### Checkpoint 5.1: API Responde

@@ -31,28 +31,18 @@ Al finalizar, los participantes podrán:
 | 0:20 | **Lab 01**: Métricas de Tokens | 20 min |
 | 0:40 | Pausa corta | 5 min |
 | 0:45 | **Lab 02**: Trazas Distribuidas | 25 min |
-| 1:10 | **Lab 03**: Azure Monitor | 30 min |
-| 1:40 | Checkpoint y Q&A | 10 min |
-| **Total** | | **85 min** |
-
-> **Nota**: Si el tiempo es limitado, Lab 03 puede hacerse como demostración (15 min) en lugar de hands-on.
+| 1:10 | Checkpoint y Q&A | 10 min |
+| **Total** | | **55 min** |
 
 ---
 
 ## Preparación Pre-Módulo
 
-### Requisitos de Azure
-
-- [ ] Application Insights creado y accesible
-- [ ] Participantes tienen permisos para ver métricas y logs
-- [ ] Connection String de App Insights disponible para compartir (opcional)
-
 ### Materiales Necesarios
 
 - [ ] Slides de los tres pilares de observabilidad
-- [ ] Diagrama de flujo: Agente → OpenTelemetry → Azure Monitor
+- [ ] Diagrama de flujo: Agente → OpenTelemetry → Consola
 - [ ] Terminal lista para demostración
-- [ ] Azure Portal abierto con App Insights (para Lab 03)
 
 ### Verificación Rápida
 
@@ -178,59 +168,17 @@ Workflow (span padre)
 
 ---
 
-### Lab 03: Azure Monitor (30 min)
-
-> **Decisión del instructor**: Si el tiempo es limitado, hacer como demostración (15 min).
-
-**Opción A: Hands-on completo (30 min)**
-
-Participantes necesitan:
-- Acceso a Azure Portal
-- Permisos para crear/ver Application Insights
-
-**Setup** (5 min):
-1. Crear Application Insights (si no existe)
-2. Copiar Connection String
-3. Configurar en user-secrets
-
-**Ejecución** (15 min):
-1. Ejecutar la aplicación
-2. Esperar 2-3 minutos para ingesta
-3. Ver métricas en Azure Portal
-4. Ejecutar una query KQL básica
-
-**Dashboard** (10 min):
-1. Importar workbook-template.json
-2. Explorar los gráficos generados
-3. (Opcional) Configurar una alerta simple
-
-**Opción B: Demostración (15 min)**
-
-El instructor:
-1. Muestra su App Insights con datos reales
-2. Ejecuta queries KQL en vivo
-3. Muestra el workbook importado
-4. Explica cómo configurar alertas (sin hacerlo)
-
-Participantes:
-1. Siguen en sus pantallas
-2. Toman notas de los pasos
-3. Intentan replicar después del workshop
-
----
-
 ### Checkpoint Final y Q&A (10 min)
 
 **Validación del módulo:**
 
 1. "¿Quién puede explicar los tres pilares?" (pedir voluntario)
 2. "¿Cuál es la diferencia entre tags y baggage en trazas?"
-3. "¿Por qué es importante redactar PII?"
+3. "¿Por qué es importante observar métricas de tokens en agentes IA?"
 
 **Encuesta rápida:**
 - "¿Quién completó Lab 01?" (meta: 90%)
 - "¿Quién completó Lab 02?" (meta: 80%)
-- "¿Quién completó o vio Lab 03?" (meta: 70%)
 
 **Preguntas frecuentes:**
 
@@ -247,14 +195,13 @@ Participantes:
 ### Si vas adelantado (+10 min)
 
 - Profundizar en KQL con más queries
-- Mostrar Mapa de Aplicación en App Insights
-- Discutir patrones avanzados (circuit breaker observability)
+- Mostrar ejemplos avanzados de distributed tracing
+- Discutir patrones de observabilidad en producción
 
 ### Si vas atrasado (-10 min)
 
-- Lab 03 como demostración en lugar de hands-on
 - Reducir tiempo de Q&A
-- Omitir importación de workbook (solo mostrar)
+- Hacer demos más cortas
 
 ### Si participantes están atascados
 
@@ -270,11 +217,7 @@ Participantes:
 
 1. Links a documentación oficial
    - [OpenTelemetry .NET](https://opentelemetry.io/docs/languages/net/)
-   - [Azure Monitor Exporter](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-enable)
-
-2. Queries KQL de referencia (del Lab 03 README)
-
-3. Workbook template JSON para importar
+   - [System.Diagnostics.Activity](https://learn.microsoft.com/dotnet/core/diagnostics/distributed-tracing)
 
 ---
 
