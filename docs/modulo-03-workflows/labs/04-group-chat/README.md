@@ -634,6 +634,6 @@ Si terminas antes, intenta:
 3. **Cambiar terminación**: Usa solo `MaxTurnsTerminationCondition(5)` y observa
 4. **Modificar estrategia de selección**: Investiga otras estrategias disponibles
 
-## Siguiente Lab
+## Próximos pasos
 
-Continúa con [Lab 05: Azure AI Agent Service](../05-azure-agent-service/) para aprender persistencia de estado y workflows que pueden pausar y reanudar.
+Continúa con el [Módulo 4: Observabilidad y Monitoreo de Agentes](../../../modulo-04-observability/) donde aprenderás a monitorear y analizar el rendimiento de tus agentes y workflows. 

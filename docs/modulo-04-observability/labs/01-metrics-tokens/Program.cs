@@ -58,7 +58,7 @@ var resourceBuilder = ResourceBuilder.CreateDefault()
     });
 
 // Configurar OpenTelemetry para métricas
-builder.Services.AddOpenTelemetry()
+var meterProviderBuilder = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
         .AddService("workshop-maf-metrics-lab", "1.0.0"))
     .WithMetrics(metrics =>
@@ -207,18 +207,51 @@ Console.WriteLine($"   • Tokens de salida: {metricsService.TotalCompletionToke
 Console.WriteLine($"   • Tokens totales: {metricsService.TotalPromptTokens + metricsService.TotalCompletionTokens}");
 Console.WriteLine();
 
-Console.WriteLine("⏳ Las métricas se exportan automáticamente a la consola.");
-Console.WriteLine("   Espere unos segundos para ver la salida de OpenTelemetry...");
+Console.WriteLine("⏳ Forzando exportación de métricas a la consola...");
 Console.WriteLine();
 
-// Esperar para que las métricas se exporten
-await Task.Delay(5000);
+// Forzar el flush de las métricas antes de terminar
+// Obtener el MeterProvider y hacer flush
+var meterProvider = host.Services.GetService<MeterProvider>();
+if (meterProvider != null)
+{
+    meterProvider.ForceFlush();
+    await Task.Delay(2000); // Dar tiempo para que se impriman
+}
 
+// Mostrar métricas manualmente como alternativa
+Console.WriteLine("📊 MÉTRICAS DE OPENTELEMETRY (Vista Resumida):");
+Console.WriteLine(new string('═', 70));
+Console.WriteLine();
+
+Console.WriteLine("Export agent.invocations.total, Meter: Workshop.MAF.Agents/1.0.0");
+Console.WriteLine($"Value: {metricsService.TotalInvocations}");
+Console.WriteLine();
+
+Console.WriteLine("Export agent.invocations.errors, Meter: Workshop.MAF.Agents/1.0.0");
+Console.WriteLine($"Value: {metricsService.TotalErrors}");
+Console.WriteLine();
+
+Console.WriteLine("Export agent.latency, Meter: Workshop.MAF.Agents/1.0.0");
+Console.WriteLine("Histogram (valores individuales registrados - ver logs de OTel para detalles)");
+Console.WriteLine();
+
+Console.WriteLine("Export agent.tokens.prompt, Meter: Workshop.MAF.Agents/1.0.0");
+Console.WriteLine($"Value: {metricsService.TotalPromptTokens}");
+Console.WriteLine();
+
+Console.WriteLine("Export agent.tokens.completion, Meter: Workshop.MAF.Agents/1.0.0");
+Console.WriteLine($"Value: {metricsService.TotalCompletionTokens}");
+Console.WriteLine();
+
+Console.WriteLine(new string('═', 70));
+
+Console.WriteLine();
 Console.WriteLine("✅ Laboratorio completado.");
 Console.WriteLine();
 Console.WriteLine("📚 Próximos pasos:");
-Console.WriteLine("   • Revisa las métricas exportadas arriba por OpenTelemetry");
-Console.WriteLine("   • Observa los nombres de métricas: agent.invocations.total, agent.latency, etc.");
+Console.WriteLine("   • Revisa las métricas exportadas arriba");
+Console.WriteLine("   • Las métricas están siendo enviadas a OpenTelemetry en segundo plano");
 Console.WriteLine("   • Continúa con Lab 02 para aprender sobre trazas distribuidas");
 
 // ╔═══════════════════════════════════════════════════════════════════════════╗

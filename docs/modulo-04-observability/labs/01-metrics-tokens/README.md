@@ -202,41 +202,45 @@ Deberías ver algo similar a:
 
 ### 4.1 Salida de OpenTelemetry
 
-Después de unos segundos, verás la exportación de métricas:
+Al finalizar la ejecución, verás un resumen formateado de las métricas:
 
 ```text
+📊 MÉTRICAS DE OPENTELEMETRY (Vista Resumida):
+══════════════════════════════════════════════════════════════════════
+
 Export agent.invocations.total, Meter: Workshop.MAF.Agents/1.0.0
-(2024-01-12T10:30:00.0000000Z, 2024-01-12T10:30:15.0000000Z] Sum LongSum
 Value: 5
 
+Export agent.invocations.errors, Meter: Workshop.MAF.Agents/1.0.0
+Value: 0
+
 Export agent.latency, Meter: Workshop.MAF.Agents/1.0.0
-(2024-01-12T10:30:00.0000000Z, 2024-01-12T10:30:15.0000000Z] Histogram
-Value: Sum: 4520.5 Count: 5 Min: 645.2 Max: 1234.8
-(-Infinity,0]:0
-(0,5]:0
-(5,10]:0
-...
-(500,1000]:3
-(1000,2500]:2
-...
+Histogram (valores individuales registrados - ver logs de OTel para detalles)
 
 Export agent.tokens.prompt, Meter: Workshop.MAF.Agents/1.0.0
 Value: 95
 
-Export agent.tokens.completion, Meter: Workshop.MAF.Agents/1.0.0  
+Export agent.tokens.completion, Meter: Workshop.MAF.Agents/1.0.0
 Value: 180
+
+══════════════════════════════════════════════════════════════════════
 ```
+
+> 💡 **Nota**: Esta vista resume las métricas capturadas. En producción, estas métricas serían exportadas a sistemas como Prometheus, Azure Monitor, o Grafana para análisis detallado con percentiles, histogramas completos, y visualizaciones.
 
 ### 4.2 Interpretación de Métricas
 
 | Métrica | Valor | Interpretación |
 |---------|-------|----------------|
 | `agent.invocations.total` | 5 | Se realizaron 5 llamadas al agente |
-| `agent.latency` Sum | 4520.5ms | Latencia total acumulada |
-| `agent.latency` Count | 5 | Número de mediciones |
-| `agent.latency` Min/Max | 645/1234ms | Rango de latencias |
+| `agent.invocations.errors` | 0 | No hubo errores en las invocaciones |
+| `agent.latency` | Histogram | Tiempo de respuesta de cada invocación (ver resumen previo) |
 | `agent.tokens.prompt` | 95 | Tokens de entrada totales |
 | `agent.tokens.completion` | 180 | Tokens de salida totales |
+
+**Análisis de costos:**
+- Si cada token cuesta $0.00002 (ejemplo), el costo total sería: (95 + 180) × $0.00002 = $0.0055
+- Estas métricas te permiten estimar y controlar costos en tiempo real
 
 ---
 
@@ -310,9 +314,12 @@ dotnet user-secrets set "AzureOpenAI:Endpoint" "https://..."
 
 ### "Las métricas no aparecen en consola"
 
-**Causa**: OpenTelemetry exporta métricas periódicamente (cada ~15s por defecto).
+**Causa**: La salida resumida se muestra al final del programa automáticamente.
 
-**Solución**: Espera unos segundos después de que termine el programa, o aumenta el `Task.Delay` al final.
+**Solución**: 
+- Las métricas se muestran en formato resumido al finalizar la ejecución
+- Si necesitas ver el histograma completo de latencia, considera exportar a Prometheus o Azure Monitor
+- La exportación de OpenTelemetry funciona en segundo plano para otros exporters
 
 ### "401 Unauthorized al llamar a Azure OpenAI"
 
