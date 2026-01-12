@@ -61,7 +61,6 @@ dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
 dotnet add package Azure.AI.OpenAI --version 2.2.0
 dotnet add package Azure.Identity --version 1.14.0
-dotnet add package Microsoft.Extensions.AI --version 10.0.0-preview.1.25166.1
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
@@ -512,7 +511,6 @@ Asegúrate de que tu archivo `DelegationWorkflow.csproj` incluya la copia de `ap
     <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.260108.1" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.2.0" />
     <PackageReference Include="Azure.Identity" Version="1.14.0" />
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.0.0-preview.1.25166.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
