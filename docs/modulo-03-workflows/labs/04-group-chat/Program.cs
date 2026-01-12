@@ -1,20 +1,23 @@
 // =============================================================================
 // Program.cs - Group Chat con Microsoft Agent Framework
 // =============================================================================
-// Descripción: Este ejemplo implementa un AgentGroupChat donde 3 agentes 
+// Descripción: Este ejemplo implementa un Group Chat Workflow donde 3 agentes 
 // colaboran en una discusión: BrainstormAgent, CriticAgent, SynthesizerAgent.
-// La conversación continúa hasta alcanzar consenso o máximo de turnos.
+// La conversación continúa hasta alcanzar el máximo de iteraciones.
 //
 // Conceptos demostrados:
-// - AgentGroupChat para conversaciones multi-agente
-// - Estrategias de terminación (MaxTurns, Keyword)
+// - AgentWorkflowBuilder.CreateGroupChatBuilderWith() para workflows de grupo
+// - RoundRobinGroupChatManager para coordinación de turnos
+// - MaximumIterationCount para control de terminación
+// - Streaming de eventos con WorkflowEvent
 // - Agentes con roles complementarios
-// - Historial de chat compartido
 // =============================================================================
 
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Chat;
-using Microsoft.Agents.AI.Chat.Termination;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 // =============================================================================
@@ -33,8 +36,11 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:Endpoint");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:DeploymentName");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:ApiKey. Use 'dotnet user-secrets set AzureOpenAI:ApiKey TU-API-KEY'");
+
+// Configurar Azure OpenAI client usando Azure CLI authentication
+var chatClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("         GROUP CHAT: Brainstorm ↔ Critic ↔ Synthesizer");
@@ -46,142 +52,116 @@ Console.WriteLine();
 // =============================================================================
 
 // Agente 1: Brainstormer - Genera ideas creativas
-var brainstormAgent = new ChatCompletionAgent(
-    name: "BrainstormAgent",
-    instructions: """
-        Eres un agente creativo de brainstorming. Tu rol en el grupo es:
-        
-        💡 TU FUNCIÓN:
-        - Generar ideas creativas e innovadoras
-        - Proponer soluciones fuera de lo convencional
-        - Expandir sobre las ideas de otros
-        - Mantener la energía positiva del grupo
-        
-        📋 REGLAS:
-        - Propón 2-3 ideas por turno
-        - Sé breve y directo (máximo 100 palabras)
-        - Construye sobre feedback recibido
-        - No critiques, solo propón
-        
-        🏁 CONSENSO:
-        Si crees que el grupo ha llegado a una buena solución, di exactamente:
-        "CONSENSO ALCANZADO: [resumen de la solución]"
-        
-        Responde en español.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
+ChatClientAgent brainstormAgent = new(chatClient,
+    """
+    Eres un agente creativo de brainstorming. Tu rol en el grupo es:
+    
+    💡 TU FUNCIÓN:
+    - Generar ideas creativas e innovadoras
+    - Proponer soluciones fuera de lo convencional
+    - Expandir sobre las ideas de otros
+    - Mantener la energía positiva del grupo
+    
+    📋 REGLAS:
+    - Propón 2-3 ideas por turno
+    - Sé breve y directo (máximo 100 palabras)
+    - Construye sobre feedback recibido
+    - No critiques, solo propón
+    
+    Responde en español.
+    """,
+    "CopyWriter",
+    "Un agente creativo de generación de ideas"
 );
 
 // Agente 2: Critic - Evalúa y cuestiona ideas
-var criticAgent = new ChatCompletionAgent(
-    name: "CriticAgent",
-    instructions: """
-        Eres un agente crítico constructivo. Tu rol en el grupo es:
-        
-        🔍 TU FUNCIÓN:
-        - Evaluar las ideas propuestas
-        - Identificar debilidades y riesgos
-        - Sugerir mejoras específicas
-        - Mantener el realismo y viabilidad
-        
-        📋 REGLAS:
-        - Sé constructivo, no destructivo
-        - Ofrece alternativas cuando critiques
-        - Sé breve (máximo 100 palabras)
-        - Reconoce los puntos fuertes también
-        
-        🏁 CONSENSO:
-        Si crees que una idea ya aborda tus preocupaciones, di:
-        "CONSENSO ALCANZADO: [resumen de la solución]"
-        
-        Responde en español.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
+ChatClientAgent criticAgent = new(chatClient,
+    """
+    Eres un agente crítico constructivo. Tu rol en el grupo es:
+    
+    🔍 TU FUNCIÓN:
+    - Evaluar las ideas propuestas
+    - Identificar debilidades y riesgos
+    - Sugerir mejoras específicas
+    - Mantener el realismo y viabilidad
+    
+    📋 REGLAS:
+    - Sé constructivo, no destructivo
+    - Ofrece alternativas cuando critiques
+    - Sé breve (máximo 100 palabras)
+    - Reconoce los puntos fuertes también
+    
+    Responde en español.
+    """,
+    "Reviewer",
+    "Un agente de evaluación y mejora"
 );
 
 // Agente 3: Synthesizer - Combina y resume ideas
-var synthesizerAgent = new ChatCompletionAgent(
-    name: "SynthesizerAgent",
-    instructions: """
-        Eres un agente sintetizador. Tu rol en el grupo es:
-        
-        🎯 TU FUNCIÓN:
-        - Combinar las mejores ideas del grupo
-        - Encontrar puntos en común
-        - Crear propuestas unificadas
-        - Facilitar el consenso
-        
-        📋 REGLAS:
-        - Resume los puntos clave de la discusión
-        - Propón síntesis que integren todas las perspectivas
-        - Sé conciso (máximo 100 palabras)
-        - Destaca áreas de acuerdo
-        
-        🏁 CONSENSO:
-        Cuando veas que el grupo converge en una solución, declara:
-        "CONSENSO ALCANZADO: [propuesta final detallada]"
-        
-        Responde en español.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
+ChatClientAgent synthesizerAgent = new(chatClient,
+    """
+    Eres un agente sintetizador. Tu rol en el grupo es:
+    
+    🎯 TU FUNCIÓN:
+    - Combinar las mejores ideas del grupo
+    - Encontrar puntos en común
+    - Crear propuestas unificadas
+    - Facilitar el consenso
+    
+    📋 REGLAS:
+    - Resume los puntos clave de la discusión
+    - Propón síntesis que integren todas las perspectivas
+    - Sé conciso (máximo 100 palabras)
+    - Destaca áreas de acuerdo
+    
+    Responde en español.
+    """,
+    "Synthesizer",
+    "Un agente de síntesis y consenso"
 );
 
-Console.WriteLine("✓ BrainstormAgent creado - Generador de ideas");
-Console.WriteLine("✓ CriticAgent creado - Evaluador constructivo");
-Console.WriteLine("✓ SynthesizerAgent creado - Integrador de propuestas");
+Console.WriteLine("✓ CopyWriter creado - Generador de ideas");
+Console.WriteLine("✓ Reviewer creado - Evaluador constructivo");
+Console.WriteLine("✓ Synthesizer creado - Integrador de propuestas");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 3: Crear el AgentGroupChat con estrategia de terminación
+// PASO 3: Construir el Group Chat Workflow
 // =============================================================================
 
-Console.WriteLine("Configurando AgentGroupChat...");
+Console.WriteLine("Configurando Group Chat Workflow...");
 
-// Crear condición de terminación combinada:
-// 1. Máximo 10 turnos (fallback de seguridad)
-// 2. Keyword "CONSENSO ALCANZADO" (terminación por consenso)
-var terminationCondition = new AggregatedTerminationCondition(
-    new MaxTurnsTerminationCondition(10),
-    new KeywordTerminationCondition("CONSENSO ALCANZADO")
-);
+// Construir el workflow con AgentWorkflowBuilder
+// CreateGroupChatBuilderWith recibe una función factory que configura el manager
+var workflow = AgentWorkflowBuilder
+    .CreateGroupChatBuilderWith(agents => 
+        new RoundRobinGroupChatManager(agents) 
+        { 
+            MaximumIterationCount = 5  // Máximo de 5 turnos (ajustado para demos)
+        })
+    .AddParticipants(brainstormAgent, criticAgent, synthesizerAgent)
+    .Build();
 
-// Crear el grupo de chat con los 3 agentes
-var groupChat = new AgentGroupChat(brainstormAgent, criticAgent, synthesizerAgent)
-{
-    TerminationCondition = terminationCondition,
-    // Estrategia de selección: round-robin entre agentes
-    SelectionStrategy = new RoundRobinSelectionStrategy()
-};
-
-Console.WriteLine("✓ AgentGroupChat configurado");
-Console.WriteLine("  └─ Estrategia de terminación: MaxTurns(10) OR Keyword('CONSENSO ALCANZADO')");
-Console.WriteLine("  └─ Selección de agente: Round-robin");
+Console.WriteLine("✓ Group Chat Workflow configurado");
+Console.WriteLine("  └─ Manager: RoundRobinGroupChatManager");
+Console.WriteLine("  └─ Máximo de iteraciones: 5");
+Console.WriteLine("  └─ Participantes: 3 agentes (round-robin)");
 Console.WriteLine();
 
 // =============================================================================
 // PASO 4: Definir el problema a discutir
 // =============================================================================
 
-var problem = """
-    ¿Cómo podemos mejorar la experiencia de onboarding de nuevos usuarios 
-    en nuestra aplicación móvil de fitness? Actualmente el 60% abandona 
-    antes de completar el registro.
-    """;
+var problem = "Crea un eslogan para un vehículo eléctrico ecológico.";
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("                    PROBLEMA A RESOLVER");
+Console.WriteLine("                    TAREA A RESOLVER");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine(problem);
 Console.WriteLine();
 
 // =============================================================================
-// PASO 5: Ejecutar el Group Chat
+// PASO 5: Ejecutar el Group Chat Workflow
 // =============================================================================
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
@@ -189,45 +169,66 @@ Console.WriteLine("                    CONVERSACIÓN DEL GRUPO");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
-// Agregar el problema inicial al chat
-groupChat.AddChatMessage(new ChatMessageContent(
-    role: AuthorRole.User,
-    content: problem
-));
+// Crear lista de mensajes con el prompt inicial
+var messages = new List<ChatMessage> { 
+    new(ChatRole.User, problem) 
+};
+
+// Ejecutar el workflow como streaming
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
 
 // Contador de turnos para visualización
 int turnCount = 0;
-string? consensusMessage = null;
+List<ChatMessage>? finalConversation = null;
 
-// Ejecutar la conversación
-await foreach (var message in groupChat.InvokeAsync())
+// Procesar eventos del workflow
+await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
 {
-    turnCount++;
-    
-    // Mostrar el mensaje con formato
-    var agentName = message.AuthorName ?? "Unknown";
-    var emoji = agentName switch
+    if (evt is AgentRunUpdateEvent update)
     {
-        "BrainstormAgent" => "💡",
-        "CriticAgent" => "🔍",
-        "SynthesizerAgent" => "🎯",
-        _ => "👤"
-    };
-
-    Console.WriteLine($"┌─── Turno {turnCount}: {emoji} {agentName} ───");
-    Console.WriteLine("│");
-    foreach (var line in (message.Content ?? "").Split('\n'))
-    {
-        Console.WriteLine($"│ {line}");
+        // Procesar respuestas streaming de los agentes
+        AgentRunResponse response = update.AsResponse();
+        
+        foreach (ChatMessage message in response.Messages)
+        {
+            // Detectar cambio de agente
+            if (message.AuthorName != null)
+            {
+                turnCount++;
+                var emoji = update.ExecutorId switch
+                {
+                    "CopyWriter" => "💡",
+                    "Reviewer" => "🔍",
+                    "Synthesizer" => "🎯",
+                    _ => "👤"
+                };
+                
+                Console.WriteLine($"\n┌─── Turno {turnCount}: {emoji} {update.ExecutorId} ───");
+                Console.WriteLine("│");
+            }
+            
+            // Mostrar el texto del mensaje
+            if (message.Text != null)
+            {
+                foreach (var line in message.Text.Split('\n'))
+                {
+                    Console.WriteLine($"│ {line}");
+                }
+            }
+        }
+        
+        if (response.Messages.Any())
+        {
+            Console.WriteLine("│");
+            Console.WriteLine("└────────────────────────────────────────────────────────────────");
+        }
     }
-    Console.WriteLine("│");
-    Console.WriteLine("└────────────────────────────────────────────────────────────────");
-    Console.WriteLine();
-
-    // Verificar si se alcanzó consenso
-    if (message.Content?.Contains("CONSENSO ALCANZADO") == true)
+    else if (evt is WorkflowOutputEvent output)
     {
-        consensusMessage = message.Content;
+        // Workflow completado - guardar la conversación final
+        finalConversation = output.As<List<ChatMessage>>();
+        break;
     }
 }
 
@@ -235,39 +236,35 @@ await foreach (var message in groupChat.InvokeAsync())
 // PASO 6: Resumen de la conversación
 // =============================================================================
 
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("                    RESUMEN DE LA SESIÓN");
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("                    CONVERSACIÓN FINAL");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 
-Console.WriteLine($"📊 Total de turnos: {turnCount}");
-Console.WriteLine($"👥 Participantes: BrainstormAgent, CriticAgent, SynthesizerAgent");
-Console.WriteLine();
-
-if (consensusMessage != null)
+if (finalConversation != null)
 {
-    Console.WriteLine("✅ RESULTADO: Consenso alcanzado");
     Console.WriteLine();
-    Console.WriteLine("📋 PROPUESTA FINAL:");
-    Console.WriteLine("─────────────────────────────────────────────────────────────────");
-    
-    // Extraer solo la parte del consenso
-    var consensusStart = consensusMessage.IndexOf("CONSENSO ALCANZADO:");
-    if (consensusStart >= 0)
+    foreach (var message in finalConversation)
     {
-        Console.WriteLine(consensusMessage.Substring(consensusStart));
+        var author = message.AuthorName ?? "Usuario";
+        var emoji = author switch
+        {
+            "CopyWriter" => "💡",
+            "Reviewer" => "🔍",
+            "Synthesizer" => "🎯",
+            "Usuario" => "👤",
+            _ => "👤"
+        };
+        
+        Console.WriteLine($"{emoji} [{author}]");
+        Console.WriteLine(message.Text ?? "(sin contenido)");
+        Console.WriteLine("───────────────────────────────────────────────────────────────────");
     }
-    else
-    {
-        Console.WriteLine(consensusMessage);
-    }
-}
-else
-{
-    Console.WriteLine("⚠️ RESULTADO: Máximo de turnos alcanzado sin consenso explícito");
-    Console.WriteLine("   El grupo discutió el problema pero no declaró un consenso formal.");
 }
 
+Console.WriteLine();
+Console.WriteLine($"📊 Total de turnos: {turnCount}");
+Console.WriteLine($"👥 Participantes: CopyWriter, Reviewer, Synthesizer");
 Console.WriteLine();
 
 // =============================================================================
@@ -278,8 +275,9 @@ Console.WriteLine("════════════════════�
 Console.WriteLine("                    WORKFLOW COMPLETADO");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
-Console.WriteLine("✓ AgentGroupChat ejecutó conversación multi-agente");
-Console.WriteLine("✓ Cada agente participó según su rol (brainstorm, critic, synthesize)");
-Console.WriteLine($"✓ Terminación: {(consensusMessage != null ? "Por consenso" : "Por máximo de turnos")}");
-Console.WriteLine("✓ Round-robin aseguró participación equitativa");
+Console.WriteLine("✓ Group Chat Workflow ejecutó conversación multi-agente");
+Console.WriteLine("✓ Cada agente participó según su rol (writer, reviewer, synthesizer)");
+Console.WriteLine("✓ RoundRobinGroupChatManager coordinó los turnos");
+Console.WriteLine("✓ Terminación por MaximumIterationCount");
+Console.WriteLine("✓ Eventos procesados con streaming en tiempo real");
 Console.WriteLine();
