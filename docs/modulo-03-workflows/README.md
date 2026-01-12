@@ -11,8 +11,7 @@ Al completar este módulo, serás capaz de:
 1. Implementar workflows secuenciales, paralelos y de delegación usando MAF
 2. Usar `AgentWorkflowBuilder` para orquestar pipelines de agentes
 3. Configurar AgentGroupChat para colaboración multi-agente
-4. Persistir estado de workflows con Azure AI Agent Service
-5. Diseñar estrategias de terminación para conversaciones multi-agente
+4. Diseñar estrategias de terminación para conversaciones multi-agente
 
 ## Contenido Teórico
 
@@ -363,10 +362,6 @@ TriageAgent transfiere control a Designer, Developer o QA usando `CreateHandoffB
 **Duración**: 30 minutos  
 Brainstorm colaborativo entre 3 agentes con terminación por consenso
 
-### [Lab 05: Azure AI Agent Service](labs/05-azure-agent-service/)
-**Duración**: 35 minutos  
-Workflow persistente: pausar ejecución, cerrar programa, reanudar
-
 ---
 
 ## Checkpoint de Validación
@@ -378,9 +373,8 @@ Workflow persistente: pausar ejecución, cerrar programa, reanudar
 - ✅ Streaming de eventos funciona con `WatchStreamAsync()`
 - ✅ Handoff transfiere control al especialista correcto según tarea
 - ✅ Group chat alcanza terminación después de colaboración
-- ✅ Thread persiste y se puede reanudar después de cerrar aplicación
 
-**Meta**: 80% de participantes completan labs 1-4, 75% completan lab 5
+**Meta**: 80% de participantes completan labs 1-4
 
 ---
 
