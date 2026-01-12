@@ -59,24 +59,14 @@ dotnet new console -n DelegationWorkflow -o .
 # Agregar paquetes necesarios para Handoff Orchestration
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
-dotnet add package Azure.AI.OpenAI --version 2.2.0
+dotnet add package Azure.AI.OpenAI --version 2.1.0
 dotnet add package Azure.Identity --version 1.14.0
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
 ```
 
-### Paso 2: Configurar User Secrets
-
-```bash
-# Inicializar user secrets
-dotnet user-secrets init
-
-# Configurar la API key (reemplaza con tu key real)
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
-```
-
-### Paso 3: Crear appsettings.json
+### Paso 2: Crear appsettings.json
 
 Crea el archivo `appsettings.json` con la configuración de Azure OpenAI:
 
@@ -91,221 +81,29 @@ Crea el archivo `appsettings.json` con la configuración de Azure OpenAI:
 
 **⚠️ Importante**: Actualiza el `Endpoint` con tu recurso de Azure OpenAI.
 
-### Paso 4: Crear los Agentes Especialistas
+### Paso 3: Crear Program.cs - Estructura Inicial
 
-Crea el archivo `SpecialistAgents.cs` con los tres agentes especialistas:
-
-```csharp
-// =============================================================================
-// SpecialistAgents.cs - Agentes especialistas para Handoff Orchestration
-// =============================================================================
-// Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff
-// =============================================================================
-
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
-
-namespace DelegationWorkflow;
-
-/// <summary>
-/// Clase estática que crea los agentes especialistas usando ChatClientAgent.
-/// Cada agente tiene un área de expertise específica y puede recibir
-/// handoffs del TriageAgent.
-/// </summary>
-public static class SpecialistAgents
-{
-    /// <summary>
-    /// Crea el agente especialista en diseño UI/UX.
-    /// </summary>
-    public static ChatClientAgent CreateDesignerAgent(IChatClient chatClient)
-    {
-        return new ChatClientAgent(
-            chatClient: chatClient,
-            instructions: """
-                Eres un diseñador UI/UX experto. Has recibido esta tarea porque el 
-                coordinador determinó que requiere expertise en diseño.
-
-                📐 TU EXPERTISE:
-                - Diseño de interfaces de usuario (UI)
-                - Experiencia de usuario (UX)
-                - Wireframes y mockups
-                - Sistemas de diseño
-                - Colores, tipografía y espaciado
-                - Accesibilidad (WCAG 2.1)
-
-                🎯 CÓMO RESPONDER:
-                1. Analiza el requerimiento de diseño
-                2. Proporciona recomendaciones específicas
-                3. Sugiere un enfoque visual con estructura clara
-                4. Incluye consideraciones de accesibilidad
-
-                Responde en español, de forma estructurada y profesional.
-                """,
-            name: "designer_agent",
-            description: "Especialista en diseño UI/UX, wireframes y accesibilidad"
-        );
-    }
-
-    /// <summary>
-    /// Crea el agente especialista en desarrollo de software.
-    /// </summary>
-    public static ChatClientAgent CreateDeveloperAgent(IChatClient chatClient)
-    {
-        return new ChatClientAgent(
-            chatClient: chatClient,
-            instructions: """
-                Eres un desarrollador de software senior. Has recibido esta tarea porque
-                el coordinador determinó que requiere expertise en desarrollo.
-
-                💻 TU EXPERTISE:
-                - Desarrollo en C# y .NET
-                - APIs RESTful
-                - Arquitectura de software
-                - Patrones de diseño
-                - Seguridad (autenticación, autorización)
-
-                🎯 CÓMO RESPONDER:
-                1. Analiza el requerimiento técnico
-                2. Proporciona una solución con código de ejemplo
-                3. Explica la arquitectura o patrón sugerido
-                4. Incluye consideraciones de seguridad
-
-                Responde en español, de forma técnica pero clara.
-                """,
-            name: "developer_agent",
-            description: "Especialista en desarrollo de software y APIs"
-        );
-    }
-
-    /// <summary>
-    /// Crea el agente especialista en control de calidad (QA).
-    /// </summary>
-    public static ChatClientAgent CreateQAAgent(IChatClient chatClient)
-    {
-        return new ChatClientAgent(
-            chatClient: chatClient,
-            instructions: """
-                Eres un especialista en Quality Assurance (QA). Has recibido esta tarea
-                porque el coordinador determinó que requiere expertise en testing.
-
-                🔍 TU EXPERTISE:
-                - Testing funcional y no funcional
-                - Casos de prueba y test plans
-                - Automatización de pruebas
-                - Pruebas de seguridad y rendimiento
-
-                🎯 CÓMO RESPONDER:
-                1. Analiza qué necesita ser probado
-                2. Define escenarios (happy path + edge cases)
-                3. Proporciona casos de prueba en formato tabla
-                4. Sugiere herramientas apropiadas
-
-                Responde en español, de forma estructurada.
-                """,
-            name: "qa_agent",
-            description: "Especialista en QA y testing"
-        );
-    }
-}
-```
-
-**Puntos clave**:
-- Usamos `ChatClientAgent` (requerido para Handoff)
-- Cada agente tiene `name` único y `description` para el routing
-- Las instrucciones definen el expertise del agente
-
-### Paso 5: Crear el Agente Triage (Coordinador)
-
-Crea el archivo `ProjectManagerAgent.cs` con el agente coordinador:
-
-```csharp
-// =============================================================================
-// ProjectManagerAgent.cs - Agente Triage para Handoff Orchestration
-// =============================================================================
-// Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff
-// =============================================================================
-
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
-
-namespace DelegationWorkflow;
-
-/// <summary>
-/// Factory para crear el agente Triage (coordinador) que decide handoffs.
-/// En el patrón Handoff, el Triage nunca responde directamente - siempre
-/// transfiere el control completo a un especialista.
-/// </summary>
-public static class TriageAgentFactory
-{
-    /// <summary>
-    /// Crea el agente Triage que coordina los handoffs a especialistas.
-    /// </summary>
-    public static ChatClientAgent CreateTriageAgent(IChatClient chatClient)
-    {
-        return new ChatClientAgent(
-            chatClient: chatClient,
-            instructions: """
-                Eres un coordinador de equipo técnico. Tu ÚNICA responsabilidad es analizar
-                las tareas y hacer handoff al especialista correcto. NUNCA respondas las
-                tareas tú mismo.
-
-                👥 TU EQUIPO DE ESPECIALISTAS:
-                
-                1. **designer_agent** - Experto en:
-                   - Diseño de interfaces (UI)
-                   - Experiencia de usuario (UX)
-                   - Wireframes y mockups
-                   
-                2. **developer_agent** - Experto en:
-                   - Desarrollo de software
-                   - APIs y endpoints
-                   - Arquitectura de sistemas
-                   
-                3. **qa_agent** - Experto en:
-                   - Testing y QA
-                   - Casos de prueba
-                   - Automatización
-
-                🎯 TU PROCESO:
-                1. Lee la tarea cuidadosamente
-                2. Identifica el tipo de trabajo requerido
-                3. Explica brevemente por qué elegiste ese especialista
-                4. Haz handoff usando: handoff_to_designer_agent, handoff_to_developer_agent, o handoff_to_qa_agent
-
-                📋 CRITERIOS DE DECISIÓN:
-                - Palabras como "diseño", "pantalla", "UI", "UX" → designer_agent
-                - Palabras como "implementar", "código", "API", "endpoint" → developer_agent
-                - Palabras como "test", "prueba", "QA", "bug" → qa_agent
-
-                ⚠️ IMPORTANTE: SIEMPRE haz handoff - NUNCA intentes resolver la tarea tú mismo.
-
-                Responde en español.
-                """,
-            name: "triage_agent",
-            description: "Coordinador que asigna tareas a especialistas mediante handoff"
-        );
-    }
-}
-```
-
-**Puntos clave**:
-- El Triage **nunca responde directamente** - siempre hace handoff
-- Las instrucciones mencionan explícitamente las funciones de handoff (`handoff_to_*`)
-- Proporciona razonamiento antes del handoff
-
-### Paso 6: Crear el Program.cs Principal
-
-Reemplaza el contenido de `Program.cs` con el código que configura el workflow de Handoff:
+Reemplaza el contenido de `Program.cs` con los usings y la configuración:
 
 ```csharp
 // =============================================================================
 // Program.cs - Workflow de Handoff con Microsoft Agent Framework
 // =============================================================================
+// Descripción: Este ejemplo implementa el patrón de Handoff Orchestration donde
+// un agente Triage transfiere el control completo a agentes especialistas según
+// el tipo de trabajo requerido.
+//
+// Conceptos demostrados:
+// - Patrón Handoff Orchestration (transferencia de control)
+// - ChatClientAgent para agentes especializados
+// - AgentWorkflowBuilder para configurar reglas de handoff
+// - Eventos de workflow (AgentRunUpdateEvent, WorkflowOutputEvent)
+//
 // Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff
 // =============================================================================
 
 using Azure.AI.OpenAI;
-using DelegationWorkflow;
+using Azure.Identity;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
@@ -315,67 +113,268 @@ using Microsoft.Extensions.Configuration;
 // PASO 1: Configuración
 // =============================================================================
 
+// Cargar configuración desde appsettings.json y user secrets
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: false)
     .AddUserSecrets<Program>()
     .Build();
 
+// Obtener configuración de Azure OpenAI
 var endpoint = configuration["AzureOpenAI:Endpoint"] 
-    ?? throw new InvalidOperationException("Falta: AzureOpenAI:Endpoint");
+    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:Endpoint");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
-    ?? throw new InvalidOperationException("Falta: AzureOpenAI:DeploymentName");
+    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:DeploymentName");
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("    WORKFLOW DE HANDOFF: Triage → Especialistas");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
+```
 
+**Puntos clave**:
+- Usamos `ConfigurationBuilder` para cargar settings de forma segura
+- Los user secrets permiten almacenar credenciales sin incluirlas en el código
+
+### Paso 4: Crear el Cliente de Azure OpenAI
+
+Agrega el código para crear el cliente de chat:
+
+```csharp
 // =============================================================================
 // PASO 2: Crear el cliente de Azure OpenAI
 // =============================================================================
 
-var azureClient = new AzureOpenAIClient(
-    new Uri(endpoint),
-    new Azure.Identity.DefaultAzureCredential());
-
-IChatClient chatClient = azureClient
+// Crear el cliente de chat usando Azure OpenAI con DefaultAzureCredential
+// AsIChatClient() convierte el cliente a la interfaz IChatClient de Extensions.AI
+IChatClient chatClient = new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
     .GetChatClient(deploymentName)
     .AsIChatClient();
 
-Console.WriteLine("✓ Cliente Azure OpenAI configurado");
+Console.WriteLine("✓ Cliente Azure OpenAI configurado con DefaultAzureCredential");
+Console.WriteLine($"  Endpoint: {endpoint}");
+Console.WriteLine($"  Modelo: {deploymentName}");
+Console.WriteLine();
+```
+
+**Puntos clave**:
+- `DefaultAzureCredential` usa las credenciales de Azure CLI o Managed Identity
+- `AsIChatClient()` convierte a la interfaz estándar de Microsoft.Extensions.AI
+
+### Paso 5: Crear los Agentes Especialistas
+
+Agrega los tres agentes especialistas usando `ChatClientAgent`:
+
+```csharp
+// =============================================================================
+// PASO 3: Crear los agentes especialistas usando ChatClientAgent
+// =============================================================================
+// En Handoff Orchestration, usamos ChatClientAgent que permite la transferencia
+// de control entre agentes. Cada agente tiene un nombre único y descripción
+// que el sistema usa para el routing automático.
+// =============================================================================
+
+Console.WriteLine("👥 Creando equipo de agentes especialistas...");
 Console.WriteLine();
 
+// Agente especialista en Diseño UI/UX
+ChatClientAgent designerAgent = new(
+    chatClient: chatClient,
+    instructions: """
+        Eres un diseñador UI/UX experto. Has recibido esta tarea porque el 
+        coordinador determinó que requiere expertise en diseño.
+
+        📐 TU EXPERTISE:
+        - Diseño de interfaces de usuario (UI)
+        - Experiencia de usuario (UX)
+        - Wireframes y mockups
+        - Sistemas de diseño
+        - Colores, tipografía y espaciado
+        - Accesibilidad (WCAG 2.1)
+        - Responsive design
+
+        🎯 CÓMO RESPONDER:
+        1. Analiza el requerimiento de diseño
+        2. Proporciona recomendaciones específicas y actionables
+        3. Sugiere un enfoque visual con estructura clara
+        4. Incluye consideraciones de accesibilidad
+        5. Si es relevante, describe componentes UI específicos
+
+        Responde en español, de forma estructurada y profesional.
+        Máximo 200 palabras.
+        """,
+    name: "designer_agent",
+    description: "Especialista en diseño UI/UX, wireframes, mockups y accesibilidad"
+);
+Console.WriteLine($"  ✓ {designerAgent.Name} (UI/UX)");
+
+// Agente especialista en Desarrollo
+ChatClientAgent developerAgent = new(
+    chatClient: chatClient,
+    instructions: """
+        Eres un desarrollador de software senior. Has recibido esta tarea porque
+        el coordinador determinó que requiere expertise en desarrollo.
+
+        💻 TU EXPERTISE:
+        - Desarrollo en C# y .NET
+        - Arquitectura de software (Clean Architecture, DDD)
+        - APIs RESTful y GraphQL
+        - Patrones de diseño
+        - Bases de datos SQL y NoSQL
+        - Seguridad (autenticación, autorización)
+        - Mejores prácticas de código
+
+        🎯 CÓMO RESPONDER:
+        1. Analiza el requerimiento técnico
+        2. Proporciona una solución con pseudocódigo o estructura
+        3. Explica la arquitectura o patrón sugerido
+        4. Incluye consideraciones de seguridad y rendimiento
+        5. Menciona dependencias o configuraciones necesarias
+
+        Responde en español, de forma técnica pero clara.
+        Máximo 200 palabras.
+        """,
+    name: "developer_agent",
+    description: "Especialista en desarrollo de software, APIs y arquitectura"
+);
+Console.WriteLine($"  ✓ {developerAgent.Name} (Código)");
+
+// Agente especialista en QA
+ChatClientAgent qaAgent = new(
+    chatClient: chatClient,
+    instructions: """
+        Eres un especialista en Quality Assurance (QA). Has recibido esta tarea
+        porque el coordinador determinó que requiere expertise en testing.
+
+        🔍 TU EXPERTISE:
+        - Testing funcional y no funcional
+        - Automatización de pruebas (xUnit, NUnit, Selenium)
+        - Casos de prueba y test plans
+        - Pruebas de regresión
+        - Pruebas de rendimiento y carga
+        - Pruebas de seguridad
+        - Reporte y seguimiento de bugs
+
+        🎯 CÓMO RESPONDER:
+        1. Analiza qué necesita ser probado
+        2. Define escenarios de prueba (happy path + edge cases)
+        3. Proporciona casos de prueba específicos y detallados
+        4. Sugiere herramientas o frameworks apropiados
+        5. Incluye criterios de aceptación claros
+
+        Responde en español, de forma estructurada y exhaustiva.
+        Máximo 200 palabras.
+        """,
+    name: "qa_agent",
+    description: "Especialista en QA, testing y automatización de pruebas"
+);
+Console.WriteLine($"  ✓ {qaAgent.Name} (Testing)");
+Console.WriteLine();
+```
+
+**Puntos clave**:
+- `ChatClientAgent` es el tipo de agente requerido para Handoff Orchestration
+- Cada agente tiene un `name` único que se usa para identificarlo en el workflow
+- El `description` ayuda al sistema a entender las capacidades del agente
+
+### Paso 6: Crear el Agente Triage (Coordinador)
+
+Agrega el agente que coordina los handoffs:
+
+```csharp
 // =============================================================================
-// PASO 3: Crear los agentes
+// PASO 4: Crear el agente Triage (Coordinador)
+// =============================================================================
+// El Triage es el agente que recibe todas las tareas inicialmente y decide
+// a qué especialista transferir el control. En Handoff, el Triage NUNCA
+// responde directamente - siempre hace handoff a un especialista.
 // =============================================================================
 
-Console.WriteLine("👥 Creando equipo de agentes...");
+Console.WriteLine("👔 Creando Triage Agent (Coordinador)...");
 
-var triageAgent = TriageAgentFactory.CreateTriageAgent(chatClient);
-var designerAgent = SpecialistAgents.CreateDesignerAgent(chatClient);
-var developerAgent = SpecialistAgents.CreateDeveloperAgent(chatClient);
-var qaAgent = SpecialistAgents.CreateQAAgent(chatClient);
+ChatClientAgent triageAgent = new(
+    chatClient: chatClient,
+    instructions: """
+        Eres un coordinador de equipo técnico. Tu ÚNICA responsabilidad es analizar
+        las tareas y hacer handoff al especialista correcto. NUNCA respondas las
+        tareas tú mismo - SIEMPRE transfiere el control a un especialista.
+
+        👥 TU EQUIPO DE ESPECIALISTAS:
+        
+        1. **designer_agent** - Experto en:
+           - Diseño de interfaces (UI)
+           - Experiencia de usuario (UX)
+           - Wireframes y mockups
+           - Sistemas de diseño
+           - Accesibilidad
+           
+        2. **developer_agent** - Experto en:
+           - Desarrollo de software
+           - APIs y endpoints
+           - Arquitectura de sistemas
+           - Código y algoritmos
+           - Bases de datos
+           
+        3. **qa_agent** - Experto en:
+           - Testing y QA
+           - Casos de prueba
+           - Automatización
+           - Control de calidad
+           - Validación
+
+        🎯 TU PROCESO:
+        1. Lee la tarea cuidadosamente
+        2. Identifica el tipo de trabajo requerido
+        3. Explica brevemente por qué elegiste ese especialista
+        4. Haz handoff usando: handoff_to_designer_agent, handoff_to_developer_agent, o handoff_to_qa_agent
+
+        📋 CRITERIOS DE DECISIÓN:
+        - Palabras como "diseño", "pantalla", "interfaz", "UI", "UX", "botón", "color" → designer_agent
+        - Palabras como "implementar", "código", "API", "endpoint", "función", "clase" → developer_agent
+        - Palabras como "test", "prueba", "validar", "QA", "bug", "caso de prueba" → qa_agent
+
+        ⚠️ IMPORTANTE: SIEMPRE haz handoff - NUNCA intentes resolver la tarea tú mismo.
+
+        Responde en español.
+        """,
+    name: "triage_agent",
+    description: "Coordinador que asigna tareas a especialistas mediante handoff"
+);
 
 Console.WriteLine($"  ✓ {triageAgent.Name} (Coordinador)");
-Console.WriteLine($"    └─ {designerAgent.Name} (UI/UX)");
-Console.WriteLine($"    └─ {developerAgent.Name} (Código)");
-Console.WriteLine($"    └─ {qaAgent.Name} (Testing)");
+Console.WriteLine($"    └─ {designerAgent.Name}");
+Console.WriteLine($"    └─ {developerAgent.Name}");
+Console.WriteLine($"    └─ {qaAgent.Name}");
 Console.WriteLine();
+```
 
+**Puntos clave**:
+- El Triage **NUNCA** responde directamente - siempre hace handoff
+- Las instrucciones mencionan explícitamente los nombres de los agentes (`designer_agent`, etc.)
+- El sistema genera automáticamente funciones `handoff_to_[agent_name]` basándose en la configuración
+
+### Paso 7: Configurar el Workflow de Handoff
+
+Configura las reglas de handoff usando `AgentWorkflowBuilder`:
+
+```csharp
 // =============================================================================
-// PASO 4: Configurar las reglas de Handoff con AgentWorkflowBuilder
+// PASO 5: Configurar el Workflow de Handoff con AgentWorkflowBuilder
+// =============================================================================
+// AgentWorkflowBuilder es la API oficial para configurar Handoff Orchestration.
+// - CreateHandoffBuilderWith(): Define el agente que inicia el workflow
+// - WithHandoffs(): Configura qué agentes pueden recibir handoff desde un agente
+// - WithHandoff(): Configura handoff de un agente a otro específico
 // =============================================================================
 
 Console.WriteLine("📋 Configurando reglas de handoff...");
 
-// AgentWorkflowBuilder es la API oficial para configurar Handoff Orchestration
 var workflow = AgentWorkflowBuilder
     .CreateHandoffBuilderWith(triageAgent)                                  // Agente inicial
     .WithHandoffs(triageAgent, [designerAgent, developerAgent, qaAgent])    // Triage → Especialistas
-    .WithHandoff(designerAgent, triageAgent)                                // Designer → Triage
-    .WithHandoff(developerAgent, triageAgent)                               // Developer → Triage
-    .WithHandoff(qaAgent, triageAgent)                                      // QA → Triage
+    .WithHandoff(designerAgent, triageAgent)                                // Designer puede volver a Triage
+    .WithHandoff(developerAgent, triageAgent)                               // Developer puede volver a Triage
+    .WithHandoff(qaAgent, triageAgent)                                      // QA puede volver a Triage
     .Build();
 
 Console.WriteLine("   triage_agent → [designer_agent, developer_agent, qa_agent]");
@@ -383,27 +382,56 @@ Console.WriteLine("   designer_agent → [triage_agent]");
 Console.WriteLine("   developer_agent → [triage_agent]");
 Console.WriteLine("   qa_agent → [triage_agent]");
 Console.WriteLine();
+```
 
+**Puntos clave**:
+- `CreateHandoffBuilderWith()` define el agente que recibe las tareas inicialmente
+- `WithHandoffs()` permite configurar múltiples destinos de handoff desde un agente
+- `WithHandoff()` configura un handoff específico de A → B
+- Los especialistas pueden volver al Triage si necesitan redireccionar
+
+### Paso 8: Definir las Tareas de Prueba
+
+Agrega las tareas que procesará el workflow:
+
+```csharp
 // =============================================================================
-// PASO 5: Definir tareas de prueba
+// PASO 6: Definir tareas de diferentes tipos
 // =============================================================================
 
 var tasks = new[]
 {
-    "Diseñar la pantalla de login con campos de usuario y contraseña",
-    "Implementar un endpoint REST para autenticación JWT",
-    "Crear los casos de prueba para el flujo de login"
+    // Tarea de diseño
+    "Diseñar la pantalla de login con campos de usuario y contraseña, incluir botón de 'Olvidé mi contraseña' y opción de login con redes sociales",
+    
+    // Tarea de desarrollo
+    "Implementar un endpoint REST para autenticación JWT que reciba email y password, valide credenciales contra la base de datos y retorne un token",
+    
+    // Tarea de QA
+    "Crear los casos de prueba para el flujo de login, incluyendo credenciales válidas, inválidas, cuenta bloqueada y rate limiting"
 };
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("                    PROCESANDO TAREAS CON HANDOFF");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+```
 
+### Paso 9: Ejecutar el Workflow con Streaming
+
+Agrega el loop principal que procesa cada tarea:
+
+```csharp
 // =============================================================================
-// PASO 6: Ejecutar el workflow para cada tarea
+// PASO 7: Procesar cada tarea usando el workflow de Handoff
+// =============================================================================
+// Para cada tarea:
+// 1. Creamos un mensaje de usuario
+// 2. Ejecutamos el workflow con InProcessExecution.StreamAsync()
+// 3. Observamos los eventos del workflow para ver los handoffs
+// 4. Capturamos la respuesta del especialista
 // =============================================================================
 
-var results = new List<(string Task, string HandoffTo)>();
+var results = new List<(string Task, string HandoffTo, string Response)>();
 
 for (int i = 0; i < tasks.Length; i++)
 {
@@ -412,60 +440,87 @@ for (int i = 0; i < tasks.Length; i++)
     Console.WriteLine($"│ TAREA {i + 1}/{tasks.Length}                                                        │");
     Console.WriteLine($"└─────────────────────────────────────────────────────────────────┘");
     Console.WriteLine();
-    Console.WriteLine($"📨 \"{tasks[i]}\"");
+    
+    var taskDescription = tasks[i].Length > 60 
+        ? tasks[i].Substring(0, 57) + "..." 
+        : tasks[i];
+    Console.WriteLine($"📨 \"{taskDescription}\"");
     Console.WriteLine();
 
     // Crear mensajes para esta tarea
-    List<ChatMessage> messages = new()
-    {
-        new ChatMessage(ChatRole.User, tasks[i])
-    };
-
-    // Ejecutar el workflow con streaming de eventos
-    StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
-    await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+    List<ChatMessage> messages = [new ChatMessage(ChatRole.User, tasks[i])];
 
     string currentAgent = "triage_agent";
     string handoffTo = "";
+    string fullResponse = "";
     
-    // Procesar eventos del workflow
-    await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
+    try
     {
-        if (evt is AgentRunUpdateEvent e)
+        // Ejecutar el workflow con streaming de eventos
+        StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+        await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+        // Procesar eventos del workflow
+        await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
         {
-            // Detectar handoff (cambio de agente)
-            if (e.ExecutorId != currentAgent)
+            if (evt is AgentRunUpdateEvent e)
             {
-                if (currentAgent == "triage_agent")
+                // Detectar handoff (cambio de agente)
+                if (e.ExecutorId != currentAgent)
                 {
-                    handoffTo = e.ExecutorId ?? "";
-                    Console.WriteLine($"   🔀 Handoff → {handoffTo}");
-                    Console.WriteLine();
+                    if (currentAgent == "triage_agent" && !string.IsNullOrEmpty(e.ExecutorId))
+                    {
+                        handoffTo = e.ExecutorId;
+                        Console.WriteLine($"   🔀 Handoff: {currentAgent} → {handoffTo}");
+                        Console.WriteLine();
+                        Console.Write($"🤖 {handoffTo}: ");
+                    }
+                    currentAgent = e.ExecutorId ?? currentAgent;
                 }
-                currentAgent = e.ExecutorId ?? currentAgent;
+                
+                // Mostrar respuesta en streaming (solo del especialista)
+                if (!string.IsNullOrEmpty(e.Data?.ToString()) && currentAgent != "triage_agent")
+                {
+                    Console.Write(e.Data);
+                    fullResponse += e.Data;
+                }
             }
-            
-            // Mostrar respuesta en streaming
-            if (!string.IsNullOrEmpty(e.Data?.ToString()))
+            else if (evt is WorkflowOutputEvent)
             {
-                Console.Write(e.Data);
+                // El workflow ha terminado
+                break;
             }
         }
-        else if (evt is WorkflowOutputEvent)
-        {
-            break;
-        }
+        Console.WriteLine();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"\n❌ Error: {ex.Message}");
+        fullResponse = $"Error: {ex.Message}";
     }
     
     Console.WriteLine();
-    results.Add((tasks[i], handoffTo));
+    
+    results.Add((tasks[i], handoffTo, fullResponse));
 }
+```
 
+**Puntos clave**:
+- `InProcessExecution.StreamAsync()` ejecuta el workflow con streaming de eventos
+- `TurnToken(emitEvents: true)` habilita la emisión de eventos para observar el progreso
+- `AgentRunUpdateEvent` contiene `ExecutorId` (nombre del agente actual) y `Data` (fragmento de respuesta)
+- Un cambio en `ExecutorId` indica que ocurrió un **handoff**
+- `WorkflowOutputEvent` indica que el workflow terminó
+
+### Paso 10: Mostrar Resumen de Resultados
+
+Agrega el código para mostrar el resumen final:
+
+```csharp
 // =============================================================================
-// PASO 7: Mostrar resumen
+// PASO 8: Resumen de Handoffs
 // =============================================================================
 
-Console.WriteLine();
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("                    RESUMEN DE HANDOFFS");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
@@ -477,53 +532,55 @@ Console.WriteLine("├──────────┼────────�
 
 for (int i = 0; i < results.Count; i++)
 {
-    var (task, handoff) = results[i];
-    var truncated = task.Length > 38 ? task.Substring(0, 35) + "..." : task.PadRight(38);
-    Console.WriteLine($"│ Tarea {i + 1}  │ {truncated} │ {handoff,-15} │");
+    var (task, handoff, _) = results[i];
+    var truncatedTask = task.Length > 38 ? task.Substring(0, 35) + "..." : task.PadRight(38);
+    var handoffDisplay = string.IsNullOrEmpty(handoff) ? "N/A" : handoff;
+    Console.WriteLine($"│ Tarea {i + 1}  │ {truncatedTask} │ {handoffDisplay,-15} │");
 }
 
 Console.WriteLine("└──────────┴────────────────────────────────────────┴─────────────────┘");
 Console.WriteLine();
-Console.WriteLine("✓ Workflow completado con patrón Handoff Orchestration");
+
+// Contar handoffs por tipo
+var designerCount = results.Count(r => r.HandoffTo.Contains("designer"));
+var developerCount = results.Count(r => r.HandoffTo.Contains("developer"));
+var qaCount = results.Count(r => r.HandoffTo.Contains("qa"));
+
+Console.WriteLine("📊 Distribución de handoffs:");
+Console.WriteLine($"   🎨 designer_agent:    {designerCount} tarea(s)");
+Console.WriteLine($"   💻 developer_agent:   {developerCount} tarea(s)");
+Console.WriteLine($"   🔍 qa_agent:          {qaCount} tarea(s)");
 Console.WriteLine();
-Console.WriteLine("📖 Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff");
 ```
 
-### Paso 7: Configurar el archivo .csproj
+### Paso 11: Validación Final
 
-Asegúrate de que tu archivo `DelegationWorkflow.csproj` incluya la copia de `appsettings.json`:
+Agrega el mensaje de validación al final del programa:
 
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
+```csharp
+// =============================================================================
+// PASO 9: Validación del workflow
+// =============================================================================
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <UserSecretsId>delegation-workflow</UserSecretsId>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.2.0" />
-    <PackageReference Include="Azure.Identity" Version="1.14.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-</Project>
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("                    WORKFLOW COMPLETADO");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine();
+Console.WriteLine("✓ Patrón Handoff Orchestration implementado correctamente");
+Console.WriteLine("✓ El Triage analizó y transfirió control a especialistas");
+Console.WriteLine("✓ Cada especialista procesó su tarea con control completo");
+Console.WriteLine("✓ Los eventos del workflow mostraron las transiciones");
+Console.WriteLine();
+Console.WriteLine("📖 Conceptos demostrados:");
+Console.WriteLine("   - Handoff: Transferencia completa de control entre agentes");
+Console.WriteLine("   - AgentWorkflowBuilder: Configuración declarativa de handoffs");
+Console.WriteLine("   - WorkflowEvents: Observación de transiciones en tiempo real");
+Console.WriteLine();
+Console.WriteLine("📚 Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff");
+Console.WriteLine();
 ```
 
-### Paso 8: Ejecutar el Workflow
+### Paso 12: Ejecutar el Workflow
 
 ```bash
 dotnet run
@@ -536,13 +593,21 @@ dotnet run
     WORKFLOW DE HANDOFF: Triage → Especialistas
 ═══════════════════════════════════════════════════════════════════
 
-✓ Cliente Azure OpenAI configurado
+✓ Cliente Azure OpenAI configurado con DefaultAzureCredential
+  Endpoint: https://tu-recurso.openai.azure.com/
+  Modelo: gpt-5.2
 
-👥 Creando equipo de agentes...
+👥 Creando equipo de agentes especialistas...
+
+  ✓ designer_agent (UI/UX)
+  ✓ developer_agent (Código)
+  ✓ qa_agent (Testing)
+
+👔 Creando Triage Agent (Coordinador)...
   ✓ triage_agent (Coordinador)
-    └─ designer_agent (UI/UX)
-    └─ developer_agent (Código)
-    └─ qa_agent (Testing)
+    └─ designer_agent
+    └─ developer_agent
+    └─ qa_agent
 
 📋 Configurando reglas de handoff...
    triage_agent → [designer_agent, developer_agent, qa_agent]
@@ -558,43 +623,48 @@ dotnet run
 │ TAREA 1/3                                                        │
 └─────────────────────────────────────────────────────────────────┘
 
-📨 "Diseñar la pantalla de login con campos de usuario y contraseña"
+📨 "Diseñar la pantalla de login con campos de usuario y contr..."
 
-   🔀 Handoff → designer_agent
+   🔀 Handoff: triage_agent → designer_agent
 
-📐 RECOMENDACIONES DE DISEÑO PARA LOGIN
+🤖 designer_agent: ## Recomendaciones de Diseño para Login
 
-1. **Estructura Visual**:
-   - Header con logo centrado
-   - Campos de email/contraseña con labels flotantes
-   - Botón principal "Iniciar Sesión"
-
-2. **Consideraciones de Accesibilidad**:
-   - Contraste mínimo 4.5:1
-   - Labels asociados a inputs
-   - Focus visible en todos los elementos
+### Estructura Visual
+- Header con logo centrado
+- Campos de email/contraseña con labels flotantes
+- Botón principal "Iniciar Sesión" con color de acento
+...
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ TAREA 2/3                                                        │
 └─────────────────────────────────────────────────────────────────┘
 
-📨 "Implementar un endpoint REST para autenticación JWT"
+📨 "Implementar un endpoint REST para autenticación JWT que re..."
 
-   🔀 Handoff → developer_agent
+   🔀 Handoff: triage_agent → developer_agent
 
-💻 IMPLEMENTACIÓN DE ENDPOINT JWT
-[Código y explicación del developer_agent...]
+🤖 developer_agent: ## Implementación de Endpoint JWT
+
+### Estructura del Endpoint
+```csharp
+[HttpPost("api/auth/login")]
+public async Task<IActionResult> Login([FromBody] LoginRequest request)
+...
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ TAREA 3/3                                                        │
 └─────────────────────────────────────────────────────────────────┘
 
-📨 "Crear los casos de prueba para el flujo de login"
+📨 "Crear los casos de prueba para el flujo de login, incluyen..."
 
-   🔀 Handoff → qa_agent
+   🔀 Handoff: triage_agent → qa_agent
 
-🔍 CASOS DE PRUEBA PARA FLUJO DE LOGIN
-[Casos de prueba del qa_agent...]
+🤖 qa_agent: ## Casos de Prueba para Login
+
+| ID | Escenario | Entrada | Resultado Esperado |
+|----|-----------|---------|-------------------|
+| TC-01 | Login exitoso | Email/password válidos | Token JWT |
+...
 
 ═══════════════════════════════════════════════════════════════════
                     RESUMEN DE HANDOFFS
@@ -608,38 +678,19 @@ dotnet run
 │ Tarea 3  │ Crear los casos de prueba para el f... │ qa_agent        │
 └──────────┴────────────────────────────────────────┴─────────────────┘
 
-✓ Workflow completado con patrón Handoff Orchestration
-```
+📊 Distribución de handoffs:
+   🎨 designer_agent:    1 tarea(s)
+   💻 developer_agent:   1 tarea(s)
+   🔍 qa_agent:          1 tarea(s)
 
-### Paso 9: Validar Resultados
+═══════════════════════════════════════════════════════════════════
+                    WORKFLOW COMPLETADO
+═══════════════════════════════════════════════════════════════════
 
-Verifica que:
-
-1. ✅ El `triage_agent` recibió cada tarea primero
-2. ✅ Cada tarea fue transferida (handoff) al especialista correcto
-3. ✅ El especialista proporcionó una respuesta completa
-4. ✅ Los eventos muestran el flujo `triage → specialist`
-
-### Paso 10: Entender el Flujo de Eventos
-
-El workflow emite eventos que puedes observar en el código:
-
-```csharp
-// Tipos de eventos en Handoff Orchestration:
-await foreach (WorkflowEvent evt in run.WatchStreamAsync())
-{
-    if (evt is AgentRunUpdateEvent e)
-    {
-        // e.ExecutorId: Nombre del agente que está respondiendo
-        // e.Data: Contenido de la respuesta (streaming)
-        // Un cambio en ExecutorId indica un handoff
-    }
-    else if (evt is WorkflowOutputEvent outputEvt)
-    {
-        // El workflow ha terminado
-        // outputEvt.Data contiene los mensajes finales
-    }
-}
+✓ Patrón Handoff Orchestration implementado correctamente
+✓ El Triage analizó y transfirió control a especialistas
+✓ Cada especialista procesó su tarea con control completo
+✓ Los eventos del workflow mostraron las transiciones
 ```
 
 ## Checkpoint de Validación
@@ -662,7 +713,20 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 | **Contexto** | Conversación completa se transfiere | Solo se pasa información relevante |
 | **Retorno** | Opcional (puede volver al triage) | Siempre retorna al principal |
 
-## Resumen de Archivos Creados
+## Resumen de APIs Utilizadas
+
+| API | Descripción |
+|-----|-------------|
+| `ChatClientAgent` | Tipo de agente requerido para Handoff Orchestration |
+| `AgentWorkflowBuilder.CreateHandoffBuilderWith()` | Crea el workflow con el agente inicial |
+| `.WithHandoffs(from, [to1, to2, ...])` | Configura múltiples destinos de handoff |
+| `.WithHandoff(from, to)` | Configura un handoff específico |
+| `InProcessExecution.StreamAsync()` | Ejecuta el workflow con streaming |
+| `TurnToken(emitEvents: true)` | Habilita eventos de progreso |
+| `AgentRunUpdateEvent` | Evento con fragmentos de respuesta y agente actual |
+| `WorkflowOutputEvent` | Evento de finalización del workflow |
+
+## Resumen de Archivos
 
 | Archivo | Propósito |
 |---------|-----------|
@@ -690,20 +754,20 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 .WithHandoffs(triageAgent, [designerAgent, developerAgent, qaAgent])
 ```
 
+### "DefaultAzureCredential authentication failed"
+
+**Causa**: No hay sesión activa de Azure CLI.
+
+**Solución**: 
+```bash
+az login
+```
+
 ### "El especialista no responde"
 
 **Causa**: El agente no está registrado en el workflow.
 
 **Solución**: Todos los agentes deben estar en las reglas de handoff.
-
-### "Falta AzureOpenAI:ApiKey"
-
-**Causa**: No configuraste el user secret.
-
-**Solución**: Ejecuta:
-```bash
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY"
-```
 
 ## Experimentos Opcionales
 
