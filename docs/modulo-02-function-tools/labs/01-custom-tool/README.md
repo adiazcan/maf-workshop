@@ -8,9 +8,9 @@
 
 En este laboratorio, crearás un agente que puede **invocar automáticamente** funciones para obtener información del clima usando Microsoft Agent Framework. Aprenderás:
 
-- Cómo definir funciones con `AIFunctionFactory.Create`
+- Cómo definir funciones con atributos `[Description]` y `AIFunctionFactory.Create`
 - Cómo las descripciones ayudan al modelo a decidir cuándo usar cada función
-- Cómo registrar funciones en `ChatCompletionAgent`
+- Cómo registrar funciones al crear el agente con `CreateAIAgent`
 - Cómo el modelo decide automáticamente cuándo llamar las funciones
 
 Al finalizar, tu agente podrá responder preguntas sobre el clima **sin que tú escribas la lógica de cuándo llamar la función** - el modelo lo decide por sí mismo.
@@ -25,11 +25,11 @@ Al finalizar, tu agente podrá responder preguntas sobre el clima **sin que tú 
 
 ### Conocimientos Previos
 - ✅ Completar Lab 01 del Módulo 1 (Hello Agent)
-- Entender cómo crear un agente básico con `ChatCompletionAgent`
+- Entender cómo crear un agente básico con `CreateAIAgent`
 
 ### Configuración de Azure
 - ✅ Azure OpenAI Service con deployment de `gpt-5.2`
-- ✅ Endpoint y API Key disponibles
+- ✅ Azure CLI configurado con `az login`
 
 ---
 
@@ -50,8 +50,15 @@ cd WeatherAgent
 ### 1.2 Instalar Paquetes NuGet
 
 ```bash
-# Microsoft Agent Framework
+# Microsoft Agent Framework packages
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.OpenAI --version 1.0.0-preview.260108.1
+
+# Azure OpenAI SDK
+dotnet add package Azure.AI.OpenAI --version 2.1.0
+
+# Azure Identity para autenticación
+dotnet add package Azure.Identity --version 1.13.0
 
 # Configuración
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
@@ -80,14 +87,16 @@ Crea el archivo `appsettings.json`:
 
 ⚠️ **Reemplaza** `TU-RECURSO-NOMBRE` con el nombre de tu recurso de Azure OpenAI.
 
-### 2.2 Configurar User Secrets
+### 2.2 Autenticación con Azure CLI
+
+Este lab usa `DefaultAzureCredential` que detecta automáticamente tus credenciales de Azure:
 
 ```bash
-# Inicializar user secrets
-dotnet user-secrets init
+# Iniciar sesión en Azure
+az login
 
-# Guardar API Key
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
+# Verificar cuenta activa
+az account show
 ```
 
 ### 2.3 Actualizar .csproj
@@ -106,8 +115,15 @@ Edita `WeatherAgent.csproj` para que quede así:
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft Agent Framework package -->
+    <!-- Microsoft Agent Framework packages -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.260108.1" />
+    
+    <!-- Azure OpenAI SDK -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    
+    <!-- Azure Identity para autenticación -->
+    <PackageReference Include="Azure.Identity" Version="1.13.0" />
     
     <!-- Configuration -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
@@ -216,9 +232,11 @@ internal record WeatherData(string City, string Country, string Condition, int T
 Reemplaza el contenido de `Program.cs`:
 
 ```csharp
+using System.ComponentModel;
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Abstractions;
-using Microsoft.Agents.AI.Chat;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using WeatherAgent;
 
@@ -233,54 +251,62 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("AzureOpenAI:Endpoint no configurado");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("AzureOpenAI:DeploymentName no configurado");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
 
 // ===== Crear Function Tools =====
-// Usamos AIFunctionFactory.Create para definir funciones invocables por el agente
+// Definimos funciones con atributos [Description] para que el modelo sepa cuándo usarlas
 
-// Función para obtener el clima actual
-var getWeatherFunction = AIFunctionFactory.Create(
-    (string city, string country) => WeatherService.GetWeather(city, country ?? "ES"),
-    name: "get_weather",
-    description: "Obtiene el clima actual para una ubicación específica. Úsala cuando el usuario pregunte sobre el clima de una ciudad."
-);
+[Description("Obtiene el clima actual para una ubicación. Úsala cuando pregunten por el clima de una ciudad.")]
+static string GetWeather(
+    [Description("El nombre de la ciudad (ej: Madrid, Barcelona)")] string city,
+    [Description("Código de país ISO (ej: ES, MX). Por defecto: ES")] string country = "ES")
+{
+    return WeatherService.GetWeather(city, country);
+}
 
-// Función para obtener el pronóstico
-var getForecastFunction = AIFunctionFactory.Create(
-    (string city, int days) => WeatherService.GetForecast(city, days > 0 ? days : 3),
-    name: "get_forecast",
-    description: "Obtiene el pronóstico del clima para los próximos días."
-);
+[Description("Obtiene el pronóstico del clima para los próximos días.")]
+static string GetForecast(
+    [Description("El nombre de la ciudad")] string city,
+    [Description("Número de días (1-7). Por defecto: 3")] int days = 3)
+{
+    return WeatherService.GetForecast(city, days > 0 ? days : 3);
+}
+
+// Crear las herramientas del agente usando AIFunctionFactory
+AITool[] tools = [
+    AIFunctionFactory.Create(GetWeather),
+    AIFunctionFactory.Create(GetForecast)
+];
 
 // ===== Crear Agente con Function Tools =====
-var agent = new ChatCompletionAgent(
-    name: "AgenteDelClima",
-    instructions: """
-        Eres un asistente experto en clima llamado AgenteDelClima.
-        Puedes proporcionar información del clima actual y pronósticos.
-        
-        Cuando el usuario pregunte sobre el clima de una ciudad:
-        1. Usa la función get_weather para obtener el clima actual
-        2. Usa la función get_forecast si preguntan por el pronóstico
-        
-        Siempre responde en español de forma amigable y útil.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey,
-    tools: new AIFunction[] { getWeatherFunction, getForecastFunction }
-);
+AIAgent agent = new AzureOpenAIClient(
+    new Uri(endpoint),
+    new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient()
+    .CreateAIAgent(
+        name: "AgenteDelClima",
+        instructions: """
+            Eres un asistente experto en clima llamado AgenteDelClima.
+            Puedes proporcionar información del clima actual y pronósticos.
+            
+            Cuando el usuario pregunte sobre el clima de una ciudad:
+            1. Usa la función GetWeather para obtener el clima actual
+            2. Usa la función GetForecast si preguntan por el pronóstico
+            
+            Siempre responde en español de forma amigable y útil.
+            """,
+        tools: tools
+    );
 
-// ===== Historial de Conversación =====
-var chatHistory = new ChatHistory();
+// ===== Crear Thread para la conversación =====
+var thread = agent.GetNewThread();
 
 // ===== Interfaz de Usuario =====
 Console.WriteLine("============================================");
 Console.WriteLine("🌤️  Agente del Clima con Function Tools (MAF)");
 Console.WriteLine("============================================");
 Console.WriteLine($"Agente: {agent.Name}");
-Console.WriteLine("Funciones: get_weather, get_forecast");
+Console.WriteLine("Funciones: GetWeather, GetForecast");
 Console.WriteLine("Escribe 'salir' para terminar");
 Console.WriteLine("============================================\n");
 
@@ -297,14 +323,13 @@ while (true)
         break;
     }
     
-    chatHistory.AddUserMessage(userInput);
     Console.Write("🌤️ AgenteDelClima: ");
     
     try
     {
-        await foreach (var message in agent.InvokeAsync(chatHistory))
+        await foreach (var update in agent.RunStreamingAsync(userInput, thread))
         {
-            Console.Write(message.Content);
+            Console.Write(update);
         }
         Console.WriteLine("\n");
     }
@@ -317,21 +342,44 @@ while (true)
 
 ### 4.2 Puntos Clave del Código
 
-**Crear Function Tools con AIFunctionFactory**:
+**Definir Function Tools con atributos**:
 ```csharp
-var getWeatherFunction = AIFunctionFactory.Create(
-    (string city, string country) => WeatherService.GetWeather(city, country),
-    name: "get_weather",
-    description: "Obtiene el clima actual..."
-);
+[Description("Obtiene el clima actual...")]
+static string GetWeather(
+    [Description("El nombre de la ciudad")] string city,
+    [Description("Código de país ISO")] string country = "ES")
+{
+    return WeatherService.GetWeather(city, country);
+}
+```
+
+**Crear herramientas con AIFunctionFactory**:
+```csharp
+AITool[] tools = [
+    AIFunctionFactory.Create(GetWeather),
+    AIFunctionFactory.Create(GetForecast)
+];
 ```
 
 **Registrar funciones en el agente**:
 ```csharp
-var agent = new ChatCompletionAgent(
-    ...
-    tools: new AIFunction[] { getWeatherFunction, getForecastFunction }
-);
+AIAgent agent = new AzureOpenAIClient(...)
+    .GetChatClient(deploymentName)
+    .AsIChatClient()
+    .CreateAIAgent(
+        name: "AgenteDelClima",
+        instructions: "...",
+        tools: tools  // ← Las funciones se pasan aquí
+    );
+```
+
+**Usar thread para mantener historial**:
+```csharp
+var thread = agent.GetNewThread();
+await foreach (var update in agent.RunStreamingAsync(userInput, thread))
+{
+    Console.Write(update);
+}
 ```
 
 ---
@@ -352,7 +400,7 @@ dotnet run
 🌤️  Agente del Clima con Function Tools (MAF)
 ============================================
 Agente: AgenteDelClima
-Funciones: get_weather, get_forecast
+Funciones: GetWeather, GetForecast
 Escribe 'salir' para terminar
 ============================================
 
@@ -386,7 +434,7 @@ Confirma que tu agente funciona correctamente:
 
 - [ ] ✅ El programa se ejecuta sin errores
 - [ ] ✅ Al preguntar por el clima de Madrid, el agente responde con datos específicos (22°C, soleado)
-- [ ] ✅ Al pedir pronóstico, el agente usa la función `get_forecast`
+- [ ] ✅ Al pedir pronóstico, el agente usa la función `GetForecast`
 - [ ] ✅ El agente responde en español
 
 ---
@@ -401,13 +449,21 @@ Confirma que tu agente funciona correctamente:
 
 **Solución**:
 1. Verifica que la función está en el array `tools` del constructor
-2. Mejora la descripción para ser más específica
+2. Mejora la descripción `[Description]` para ser más específica
+
+### Error de autenticación
+
+**Síntoma**: Error de credenciales o 401.
+
+**Solución**: 
+1. Ejecuta `az login` para autenticarte en Azure
+2. Verifica que tu cuenta tiene acceso al recurso Azure OpenAI
 
 ### Error de conexión
 
-**Síntoma**: Error 401 o timeout.
+**Síntoma**: Error de red o timeout.
 
-**Solución**: Verifica endpoint, API key y deployment name en appsettings.json
+**Solución**: Verifica el endpoint en appsettings.json
 
 ---
 
@@ -415,10 +471,11 @@ Confirma que tu agente funciona correctamente:
 
 En este laboratorio aprendiste:
 
-✅ **Definir Function Tools** con `AIFunctionFactory.Create`  
-✅ **Registrar funciones** en el constructor de `ChatCompletionAgent`  
+✅ **Definir Function Tools** con atributos `[Description]` y `AIFunctionFactory.Create`  
+✅ **Registrar funciones** al crear el agente con `CreateAIAgent`  
 ✅ **Las descripciones son cruciales** para que el modelo tome buenas decisiones  
-✅ **El modelo decide cuándo llamar** - no necesitas lógica de routing manual
+✅ **El modelo decide cuándo llamar** - no necesitas lógica de routing manual  
+✅ **Usar threads** para mantener el historial de conversación
 
 ---
 
