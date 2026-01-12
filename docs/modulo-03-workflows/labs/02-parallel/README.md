@@ -219,6 +219,14 @@ var results = await Task.WhenAll(researcherTask, marketerTask, legalTask);
 ### Paso 8: Mostrar Resultados y Métricas
 
 ```csharp
+// Medir tiempo total de ejecución paralela
+var parallelStopwatch = Stopwatch.StartNew();
+
+// Task.WhenAll ejecuta las 3 tareas SIMULTÁNEAMENTE
+var results = await Task.WhenAll(researcherTask, marketerTask, legalTask);
+
+parallelStopwatch.Stop();
+
 // Mostrar resultados
 foreach (var (agentName, result, elapsedMs) in results)
 {
