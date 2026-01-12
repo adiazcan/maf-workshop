@@ -66,7 +66,6 @@ dotnet add package Microsoft.Agents.AI.OpenAI --version 1.0.0-preview.260108.1
 dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
 dotnet add package Azure.AI.OpenAI --version 2.1.0
 dotnet add package Azure.Identity --version 1.13.0
-dotnet add package Microsoft.Extensions.AI --version 9.5.0
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
@@ -139,7 +138,7 @@ Crea tres agentes con diferentes perspectivas usando `ChatClientAgent`:
 ```csharp
 // Método helper para crear agentes con diferentes perspectivas
 static ChatClientAgent CreateExpertAgent(IChatClient chatClient, string name, string instructions) =>
-    new(chatClient, instructions) { Name = name };
+    new(chatClient, instructions);
 
 // Crear los tres agentes especializados
 var researcherAgent = CreateExpertAgent(
@@ -312,21 +311,6 @@ dotnet run
 │ ...
 └────────────────────────────────────────────────────────────────
 
-═══════════════════════════════════════════════════════════════════
-                    ANÁLISIS DE RENDIMIENTO
-═══════════════════════════════════════════════════════════════════
-
-⏱️  Tiempo total de ejecución concurrente: 2450ms
-📊 Agentes ejecutados en paralelo: 3
-
-═══════════════════════════════════════════════════════════════════
-                    WORKFLOW COMPLETADO
-═══════════════════════════════════════════════════════════════════
-
-✓ Workflow concurrente ejecutado con AgentWorkflowBuilder.BuildConcurrent()
-✓ Todos los agentes procesaron el mismo prompt en paralelo
-✓ Resultados agregados automáticamente por el framework
-✓ Eventos de streaming procesados en tiempo real
 ```
 
 ## Checkpoint de Validación
