@@ -143,8 +143,7 @@ az consumption budget create \
 | 14:45-15:45 | 60 min | **Módulo 4: Observabilidad** |
 | 15:45-16:00 | 15 min | ☕ BREAK |
 | 16:00-17:00 | 60 min | **Módulo 5: ASP.NET + Aspire** |
-| 17:00-17:15 | 15 min | **Módulo 6: DevUI** (demo rápido) |
-| 17:15-17:30 | 15 min | **Módulo 7: MCP** (overview) + Cierre |
+| 17:00-17:15 | 15 min | **Módulo 7: MCP** (overview) + Cierre |
 
 **Total**: 7 horas (incluye breaks)
 
@@ -171,10 +170,6 @@ az consumption budget create \
 **Módulo 5**:
 - Checkpoint: "API responde en http://localhost:5000/api/chat"
 - Meta: 70% de éxito
-
-**Módulo 6**:
-- Checkpoint: "DevUI muestra conversación del agente"
-- Meta: 85% de éxito (demo rápido)
 
 **Módulo 7**:
 - Checkpoint: "Explica qué es MCP en 1-2 frases"

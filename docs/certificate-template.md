@@ -27,7 +27,6 @@
 ✅ Módulo 3: Workflows y Orquestación Multi-Agente  
 ✅ Módulo 4: Observabilidad y Monitoreo  
 ✅ Módulo 5: Integración con ASP.NET Core y .NET Aspire  
-✅ Módulo 6: DevUI - Debugging y Testing  
 ✅ Módulo 7: Model Context Protocol (MCP)
 
 ---

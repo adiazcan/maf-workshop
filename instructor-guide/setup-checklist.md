@@ -45,7 +45,6 @@
   - [ ] Módulo 3: Sequential, Parallel, Delegation, Group Chat, Azure Agent Service
   - [ ] Módulo 4: Metrics, Traces, Azure Monitor
   - [ ] Módulo 5: Multi-Agent Web (Capstone)
-  - [ ] Módulo 6: DevUI Setup
   - [ ] Módulo 7: MCP Demo
 - [ ] **Documentar tiempo real** de cada lab (comparar con estimaciones)
 - [ ] **Identificar errores comunes** y agregar a troubleshooting guide
@@ -58,7 +57,6 @@
   - [ ] .NET 10 SDK (`dotnet --version`)
   - [ ] Visual Studio Code (última versión)
   - [ ] Git (`git --version`)
-  - [ ] DevUI tool (`dotnet tool list -g | grep DevUI`)
   - [ ] Azure CLI (`az --version`)
 - [ ] **Configurar user secrets** para Azure OpenAI en todos los labs
 - [ ] **Probar ejecución** desde carpeta limpia (simular participante)
@@ -154,7 +152,7 @@
   - [ ] VS Code con tabs de todos los labs
   - [ ] Azure Portal (OpenAI, Application Insights)
   - [ ] Terminal con directorios de labs
-  - [ ] Navegador con Aspire Dashboard, DevUI
+  - [ ] Navegador con Aspire Dashboard
 - [ ] **Probar conexión a Azure** desde laptop del instructor
 - [ ] **Escribir información importante** en pizarra/flip chart:
   - WiFi credentials

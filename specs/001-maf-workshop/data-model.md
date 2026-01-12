@@ -316,7 +316,7 @@ Represents software, configuration, or knowledge required before starting.
   "name": "Azure OpenAI Service",
   "type": "azure-resource",
   "isMandatory": true,
-  "requiredFor": ["modulo-01-fundamentos", "modulo-02-function-tools", "modulo-03-workflows", "modulo-04-observability", "modulo-05-aspnet-aspire", "modulo-06-devui"],
+  "requiredFor": ["modulo-01-fundamentos", "modulo-02-function-tools", "modulo-03-workflows", "modulo-04-observability", "modulo-05-aspnet-aspire"],
   "description": "Servicio de Azure que proporciona acceso a modelos de lenguaje como GPT-5.2. Obligatorio para todos los módulos del workshop.",
   "installationInstructions": "1. Ir a portal.azure.com\n2. Crear recurso 'Azure OpenAI'\n3. Desplegar modelo 'gpt-5.2'\n4. Copiar endpoint y API key",
   "verificationCommand": "curl https://YOUR-RESOURCE.openai.azure.com/openai/deployments?api-version=2024-10-01-preview -H \"api-key: YOUR-KEY\"",

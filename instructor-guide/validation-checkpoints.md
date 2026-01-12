@@ -365,34 +365,6 @@ Instructor: "Alguien comparta pantalla mostrando un trace"
 
 ---
 
-## Módulo 6: DevUI
-
-### Checkpoint 6.1: DevUI Conectado (Demo del Instructor)
-
-**Criterio de Éxito**:
-> DevUI muestra conversación con el agente en tiempo real.
-
-**Método de Validación**: Instructor Demo Únicamente
-
-```
-Instructor: [Compartir pantalla]
-1. Ejecutar `devui start`
-2. Abrir http://localhost:5100
-3. Conectar a agente
-4. Enviar mensaje de prueba
-5. Mostrar visualización de function call
-
-[Demo 10 minutos con Q&A]
-
-Instructor: "DevUI es para debugging local. El código de configuración está en el lab. Quien quiera probarlo, pueden hacerlo después."
-```
-
-**Threshold**: 100% (observación únicamente, no requiere implementación)
-
-**Tiempo**: 10-12 minutos (demo + Q&A)
-
----
-
 ## Módulo 7: MCP
 
 ### Checkpoint 7.1: Comprensión Conceptual de MCP

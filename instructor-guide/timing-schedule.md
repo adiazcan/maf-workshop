@@ -21,8 +21,7 @@
 | 14:45-15:45 | 60 min | 🧪 **Módulo 4: Observabilidad** | Hands-on |
 | 15:45-16:00 | 15 min | ☕ **BREAK** | Descanso |
 | 16:00-17:00 | 60 min | 🧪 **Módulo 5: ASP.NET + Aspire** | Hands-on |
-| 17:00-17:15 | 15 min | 🧪 **Módulo 6: DevUI** (Demo) | Demostrativo |
-| 17:15-17:30 | 15 min | 📚 **Módulo 7: MCP + Cierre** | Teórico + Q&A |
+| 17:00-17:15 | 15 min | 📚 **Módulo 7: MCP + Cierre** | Teórico + Q&A |
 
 **Total**: 7.5 horas (09:00 AM - 5:30 PM)
 
@@ -126,17 +125,6 @@ Inicio más tarde, breaks más cortos:
 **Checkpoint**: 70% completan capstone y ven Aspire Dashboard funcionando
 
 **Nota**: Este es el proyecto culminante. Priorizar que todos lo completen sobre labs opcionales anteriores.
-
----
-
-### Módulo 6: DevUI (15 min total)
-
-| Tiempo | Actividad | Duración |
-|--------|-----------|----------|
-| 0-5 min | Teoría: ¿Qué es DevUI? | 5 min |
-| 5-15 min | Demo: DevUI con agente de ejemplo | 10 min |
-
-**Checkpoint**: Todos comprenden capacidades de DevUI (demo únicamente)
 
 ---
 

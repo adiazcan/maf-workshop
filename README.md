@@ -15,7 +15,6 @@ Este workshop práctico te enseñará a construir agentes inteligentes utilizand
   - [Módulo 3: Workflows y Orquestación](#módulo-3-workflows-y-orquestación)
   - [Módulo 4: Observabilidad y Monitoreo](#módulo-4-observabilidad-y-monitoreo)
   - [Módulo 5: Integración con ASP.NET y Aspire](#módulo-5-integración-con-aspnet-y-aspire)
-  - [Módulo 6: DevUI - Debugging y Testing](#módulo-6-devui---debugging-y-testing)
   - [Módulo 7: Model Context Protocol (MCP)](#módulo-7-model-context-protocol-mcp)
 - [Comenzar](#-comenzar)
 - [Recursos Adicionales](#-recursos-adicionales)
@@ -49,7 +48,7 @@ git --version
 
 ## 🎯 Estructura del Workshop
 
-El workshop está organizado en **7 módulos progresivos**, cada uno diseñado para desarrollar habilidades específicas:
+El workshop está organizado en **6 módulos progresivos**, cada uno diseñado para desarrollar habilidades específicas:
 
 ### [Módulo 1: Fundamentos](docs/modulo-01-fundamentos/)
 **Duración**: 60 minutos | **Nivel**: Principiante
@@ -132,22 +131,6 @@ Construye aplicaciones web multi-agente con ASP.NET Core y .NET Aspire.
 
 **Labs**:
 - 01-multi-agent-web: Aplicación web completa con múltiples agentes (Capstone Project)
-
----
-
-### [Módulo 6: DevUI - Debugging y Testing](docs/modulo-06-devui/)
-**Duración**: 15 minutos | **Nivel**: Todos los niveles
-
-Utiliza DevUI para depurar, probar e inspeccionar agentes durante el desarrollo.
-
-**Temas cubiertos**:
-- Configuración de DevUI
-- Visualización de conversaciones
-- Inspección de function calls
-- Testing interactivo
-
-**Labs**:
-- 01-devui-setup: Configuración y uso de DevUI
 
 ---
 
