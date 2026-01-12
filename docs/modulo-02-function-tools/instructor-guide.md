@@ -77,15 +77,15 @@ dotnet build
    - El modelo **decide automáticamente** cuándo llamar funciones
 
 2. **Anatomía de una Function Tool** (5 min)
-   - `[KernelFunction]`: Marca el método como invocable
-   - `[Description]`: Explica AL MODELO qué hace la función
-   - Descripciones de parámetros: Guían al modelo en qué valores pasar
-   - **Demostrar** el código de WeatherService.cs
+   - `AIFunctionFactory.Create`: Convierte métodos en funciones para el agente
+   - Parámetro `name`: Nombre que el modelo usará para llamar la función
+   - Parámetro `description`: Explica AL MODELO qué hace la función
+   - **Demostrar** el código de WeatherService.cs y Program.cs
 
 3. **Composición de Agentes** (4 min)
    - Patrón: Un agente coordinador con agentes especialistas
    - Beneficios: Modularidad, especialización, reutilización
-   - `KernelFunctionFactory.CreateFromMethod` para convertir agentes en funciones
+   - `AIFunctionFactory.Create` para convertir agentes en funciones
 
 4. **Human-in-the-Loop** (3 min)
    - Cuándo usar: Operaciones destructivas, transacciones, comunicaciones
@@ -117,12 +117,12 @@ Crear un agente que consulta el clima usando una función personalizada.
    - Configurar appsettings.json y user secrets
 
 2. **Implementar WeatherService.cs** (7 min)
-   - Explicar cada atributo mientras escriben
-   - Enfatizar la importancia de las descripciones
+   - Explicar los métodos estáticos que serán las funciones
+   - Enfatizar la importancia de las descripciones claras
 
 3. **Implementar Program.cs** (5 min)
-   - Mostrar `AddFromType<WeatherService>()`
-   - Explicar `FunctionChoiceBehavior.Auto()`
+   - Mostrar `AIFunctionFactory.Create` para cada función
+   - Explicar el parámetro `tools` en `ChatCompletionAgent`
 
 4. **Ejecutar y validar** (3 min)
    - Probar preguntas sobre clima
@@ -130,7 +130,7 @@ Crear un agente que consulta el clima usando una función personalizada.
 
 ### Checkpoint 1: Validación (5 minutos)
 
-**Criterio de Éxito**: El agente llama automáticamente a `GetWeather()` cuando se pregunta sobre clima.
+**Criterio de Éxito**: El agente llama automáticamente a `get_weather` cuando se pregunta sobre clima.
 
 **Método de Validación**:
 1. Pedir que levanten la mano quienes vean la respuesta con datos de clima específicos
@@ -141,7 +141,7 @@ Crear un agente que consulta el clima usando una función personalizada.
 
 | Problema | Señales | Solución Rápida |
 |----------|---------|-----------------|
-| Función no se llama | Agente inventa datos | Verificar `AddFromType<>()` y `FunctionChoiceBehavior.Auto()` |
+| Función no se llama | Agente inventa datos | Verificar `AIFunctionFactory.Create()` y el array `tools` |
 | Error 401 | Mensaje de autorización | Verificar API key en user secrets |
 | Compilación falla | Errores de build | Verificar paquetes instalados correctamente |
 
@@ -159,17 +159,17 @@ Crear un sistema donde el agente principal delega matemáticas a un agente espec
 1. **Setup y configuración** (3 min)
    - Reutilizar configuración similar a Lab 01
 
-2. **Implementar CalculatorAgent.cs** (8 min)
-   - Explicar que es un agente completo con sus propias instrucciones
-   - Mostrar el método `SolveMathProblemAsync()`
+2. **Implementar el agente calculadora** (8 min)
+   - Explicar que es un `ChatCompletionAgent` completo
+   - Mostrar cómo crear una función que invoca al agente
 
-3. **Implementar MainAgent.cs** (7 min)
-   - Clave: `KernelFunctionFactory.CreateFromMethod()`
-   - Mostrar cómo el método del agente se convierte en función
+3. **Implementar el agente principal** (7 min)
+   - Clave: `AIFunctionFactory.Create` para envolver el agente
+   - Mostrar cómo el agente se convierte en función para el coordinador
 
 4. **Implementar Program.cs** (4 min)
    - Crear ambos agentes
-   - Usar `kernel.Clone()` para plugins separados
+   - Registrar calculadora como tool del agente principal
 
 5. **Ejecutar y validar** (3 min)
    - Probar preguntas matemáticas (debe delegar)
@@ -262,33 +262,41 @@ Implementar aprobación humana para operaciones sensibles.
 
 **Diagnóstico**:
 ```csharp
-// Verificar que esto está presente:
-builder.Plugins.AddFromType<WeatherService>();
+// Verificar que las funciones se crean correctamente:
+var getWeatherFunction = AIFunctionFactory.Create(
+    WeatherService.GetWeather,
+    name: "get_weather",
+    description: "Obtiene el clima actual de una ciudad..."
+);
 
-// Y esto en el agente:
-Arguments = new KernelArguments(
-    new AzureOpenAIPromptExecutionSettings
-    {
-        FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-    }
-)
+// Y se pasan al agente en el constructor:
+var agent = new ChatCompletionAgent(
+    chatClient: chatClient,
+    name: "WeatherAgent",
+    instructions: "...",
+    tools: new[] { getWeatherFunction, getForecastFunction }
+);
 ```
 
 **Solución rápida**: Copiar el código exacto del lab.
 
-### Problema: "Error: Plugin already registered"
+### Problema: "Plugin already registered" o conflicto de herramientas
 
-**Causa**: Intentar agregar el mismo plugin dos veces.
+**Causa**: Intentar agregar la misma herramienta dos veces o conflicto de nombres.
 
-**Solución**: Usar `kernel.Clone()` antes de agregar plugins adicionales.
+**Solución**: Verificar que cada función tiene un nombre único en el array `tools`.
 
 ### Problema: "La función se llama con parámetros incorrectos"
 
-**Causa**: Descripciones de parámetros poco claras.
+**Causa**: Descripciones de funciones o parámetros poco claras.
 
-**Solución**: Mejorar las descripciones con ejemplos específicos:
+**Solución**: Mejorar las descripciones en `AIFunctionFactory.Create`:
 ```csharp
-[Description("Nombre de la ciudad, por ejemplo: Madrid, Barcelona, Valencia")]
+var function = AIFunctionFactory.Create(
+    MyService.MyMethod,
+    name: "my_function",
+    description: "Obtiene información de una ciudad. El parámetro city debe ser el nombre completo, por ejemplo: Madrid, Barcelona, Valencia"
+);
 ```
 
 ### Problema: "Error de timeout en Azure OpenAI"
@@ -344,8 +352,8 @@ Todos los labs tienen código completo en:
 
 ### Enlaces Útiles
 
-- [Documentación de Semantic Kernel Plugins](https://learn.microsoft.com/semantic-kernel/agents/plugins)
-- [Function Calling Guide](https://learn.microsoft.com/azure/ai-services/openai/how-to/function-calling)
+- [Documentación de Microsoft Agent Framework](https://learn.microsoft.com/dotnet/ai/agents)
+- [Azure OpenAI Function Calling Guide](https://learn.microsoft.com/azure/ai-services/openai/how-to/function-calling)
 - [Responsible AI Guidelines](https://learn.microsoft.com/azure/ai-services/responsible-use-of-ai-overview)
 
 ---
@@ -355,10 +363,10 @@ Todos los labs tienen código completo en:
 ### Verificación de Comprensión
 
 Preguntas rápidas para verificar aprendizaje:
-1. "¿Para qué sirve el atributo `[Description]`?" 
-   → Para que el modelo sepa cuándo usar la función
+1. "¿Cómo creamos una función para el agente en MAF?" 
+   → Usando `AIFunctionFactory.Create` con nombre y descripción
 2. "¿Cómo convertimos un agente en función?"
-   → `KernelFunctionFactory.CreateFromMethod()`
+   → Creando una función que invoca al agente y registrándola con `AIFunctionFactory.Create`
 3. "¿Cuándo debemos usar Human-in-the-Loop?"
    → Operaciones destructivas, transacciones, comunicaciones
 

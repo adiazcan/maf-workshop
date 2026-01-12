@@ -1,15 +1,14 @@
 // ============================================================================
 // Archivo: Program.cs
-// Descripción: Demostración de Human-in-the-Loop para operaciones sensibles
+// Descripción: Demostración de Human-in-the-Loop con Microsoft Agent Framework
 // Módulo: 2 - Function Tools
 // Lab: 03-human-approval
 // ============================================================================
 
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Abstractions;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using ApprovalWorkflow;
 
 // ===== Configuración =====
@@ -26,25 +25,47 @@ var deploymentName = configuration["AzureOpenAI:DeploymentName"]
 var apiKey = configuration["AzureOpenAI:ApiKey"] 
     ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
 
-// ===== Crear Kernel =====
-var builder = Kernel.CreateBuilder();
+// ===== Crear Function Tools =====
 
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: deploymentName,
-    endpoint: endpoint,
-    apiKey: apiKey
+// Función de SOLO LECTURA - No requiere aprobación
+var listFilesFunction = AIFunctionFactory.Create(
+    () => SensitiveOperations.ListFiles(),
+    name: "list_files",
+    description: "Lista los archivos disponibles en el sistema. Úsala cuando el usuario quiera ver qué archivos existen. NO requiere aprobación."
 );
 
-// Registrar las operaciones sensibles como plugin
-builder.Plugins.AddFromType<SensitiveOperations>();
+// Función de SOLO LECTURA - No requiere aprobación
+var checkBalanceFunction = AIFunctionFactory.Create(
+    () => SensitiveOperations.CheckBalance(),
+    name: "check_balance",
+    description: "Consulta el saldo disponible en la cuenta. Operación de solo lectura. NO requiere aprobación."
+);
 
-var kernel = builder.Build();
+// Función SENSIBLE - REQUIERE aprobación humana
+var deleteFileFunction = AIFunctionFactory.Create(
+    (string filePath) => SensitiveOperations.DeleteFile(filePath),
+    name: "delete_file",
+    description: "Elimina un archivo del sistema. OPERACIÓN SENSIBLE: Requiere confirmación del usuario antes de ejecutar."
+);
 
-// ===== Crear Agente =====
-var agent = new ChatCompletionAgent()
-{
-    Name = "AsistenteSeguro",
-    Instructions = """
+// Función SENSIBLE - REQUIERE aprobación humana
+var sendEmailFunction = AIFunctionFactory.Create(
+    (string recipient, string subject, string body) => SensitiveOperations.SendEmail(recipient, subject, body),
+    name: "send_email",
+    description: "Envía un correo electrónico. OPERACIÓN SENSIBLE: Requiere confirmación antes de enviar."
+);
+
+// Función SENSIBLE - REQUIERE aprobación humana
+var transferFundsFunction = AIFunctionFactory.Create(
+    (string destinationAccount, decimal amount, string concept) => SensitiveOperations.TransferFunds(destinationAccount, amount, concept),
+    name: "transfer_funds",
+    description: "Transfiere fondos a una cuenta. OPERACIÓN FINANCIERA SENSIBLE: Requiere aprobación obligatoria."
+);
+
+// ===== Crear Agente con todas las funciones =====
+var agent = new ChatCompletionAgent(
+    name: "AsistenteSeguro",
+    instructions: """
         Eres un asistente administrativo llamado AsistenteSeguro.
         Tienes acceso a operaciones del sistema que pueden ser sensibles.
         
@@ -62,14 +83,18 @@ var agent = new ChatCompletionAgent()
         
         Responde siempre en español de forma profesional.
         """,
-    Kernel = kernel,
-    Arguments = new KernelArguments(
-        new AzureOpenAIPromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        }
-    )
-};
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey,
+    tools: new AIFunction[] 
+    { 
+        listFilesFunction, 
+        checkBalanceFunction, 
+        deleteFileFunction, 
+        sendEmailFunction, 
+        transferFundsFunction 
+    }
+);
 
 // ===== Historial =====
 var chatHistory = new ChatHistory();
@@ -120,7 +145,7 @@ while (true)
     
     try
     {
-        await foreach (var message in agent.InvokeStreamingAsync(chatHistory))
+        await foreach (var message in agent.InvokeAsync(chatHistory))
         {
             Console.Write(message.Content);
         }

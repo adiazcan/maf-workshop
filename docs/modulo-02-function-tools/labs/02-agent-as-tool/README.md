@@ -6,7 +6,7 @@
 
 ## Objetivo
 
-En este laboratorio, aprenderás a componer agentes donde un agente principal **delega tareas especializadas** a otros agentes. Este patrón es fundamental para:
+En este laboratorio, aprenderás a componer agentes donde un agente principal **delega tareas especializadas** a otros agentes usando Microsoft Agent Framework. Este patrón es fundamental para:
 
 - **Modularidad**: Cada agente tiene una responsabilidad clara
 - **Especialización**: Agentes expertos en dominios específicos
@@ -25,7 +25,7 @@ Al finalizar, tendrás un sistema donde el agente principal automáticamente del
 
 ### Conocimientos Previos
 - ✅ Completar Lab 01 (Custom Function Tool)
-- Entender `[KernelFunction]` y registro de plugins
+- Entender `AIFunctionFactory.Create` y registro de tools
 
 ### Configuración de Azure
 - ✅ Azure OpenAI Service con deployment de `gpt-5.2`
@@ -48,8 +48,6 @@ cd AgentComposition
 
 ```bash
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
-dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
-dotnet add package Azure.AI.OpenAI --version 2.0.0
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
@@ -65,15 +63,7 @@ dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0
 {
   "AzureOpenAI": {
     "Endpoint": "https://TU-RECURSO-NOMBRE.openai.azure.com/",
-    "DeploymentName": "gpt-5.2",
-    "MaxTokens": 2000,
-    "Temperature": 0.7
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft": "Warning"
-    }
+    "DeploymentName": "gpt-5.2"
   }
 }
 ```
@@ -99,12 +89,8 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft Agent Framework packages -->
+    <!-- Microsoft Agent Framework package -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
-    
-    <!-- Azure OpenAI -->
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
     
     <!-- Configuration -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
@@ -123,246 +109,17 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
 
 ---
 
-## Paso 3: Crear el Agente Especializado
+## Paso 3: Implementar el Sistema Multi-Agente
 
-### 3.1 Crear CalculatorAgent.cs
+### 3.1 Reemplazar Program.cs
 
-El agente calculadora es un **agente completo** con sus propias instrucciones, especializado en resolver problemas matemáticos.
+El enfoque con Microsoft Agent Framework es más directo - todo se define en un solo archivo:
 
 ```csharp
-// ============================================================================
-// Archivo: CalculatorAgent.cs
-// Descripción: Agente especializado en cálculos matemáticos
-// Módulo: 2 - Function Tools
-// Lab: 02-agent-as-tool
-// ============================================================================
-
 using Microsoft.Agents.AI;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-
-namespace AgentComposition;
-
-/// <summary>
-/// Agente especializado en operaciones matemáticas.
-/// Este agente será utilizado como "herramienta" por el agente principal
-/// para delegar cualquier pregunta relacionada con matemáticas.
-/// </summary>
-public class CalculatorAgent
-{
-    private readonly ChatCompletionAgent _agent;
-    private readonly Kernel _kernel;
-    
-    public CalculatorAgent(Kernel kernel)
-    {
-        _kernel = kernel;
-        
-        // Crear agente especializado en matemáticas
-        _agent = new ChatCompletionAgent()
-        {
-            Name = "CalculadoraExperta",
-            Instructions = """
-                Eres un experto matemático llamado CalculadoraExperta.
-                Tu único propósito es resolver problemas matemáticos.
-                
-                Reglas:
-                1. Solo respondes preguntas matemáticas
-                2. Siempre muestras el proceso paso a paso
-                3. Usas notación matemática clara
-                4. Respondes en español
-                5. Si no es una pregunta matemática, indica que solo puedes hacer cálculos
-                
-                Ejemplos de lo que puedes hacer:
-                - Operaciones básicas (suma, resta, multiplicación, división)
-                - Porcentajes y proporciones
-                - Ecuaciones simples
-                - Conversiones de unidades
-                - Estadísticas básicas (promedio, mediana)
-                """,
-            Kernel = kernel
-        };
-    }
-    
-    /// <summary>
-    /// Nombre del agente para identificación
-    /// </summary>
-    public string Name => _agent.Name;
-    
-    /// <summary>
-    /// Procesa una pregunta matemática y devuelve la respuesta.
-    /// Este método será expuesto como función al agente principal.
-    /// </summary>
-    /// <param name="question">Pregunta o problema matemático</param>
-    /// <returns>Solución con explicación paso a paso</returns>
-    public async Task<string> SolveMathProblemAsync(string question)
-    {
-        Console.WriteLine($"\n   📊 [CalculadoraExperta recibió]: {question}");
-        
-        // Crear historial temporal para esta consulta
-        var chatHistory = new ChatHistory();
-        chatHistory.AddUserMessage(question);
-        
-        // Invocar el agente especializado
-        var response = new System.Text.StringBuilder();
-        
-        await foreach (var message in _agent.InvokeStreamingAsync(chatHistory))
-        {
-            response.Append(message.Content);
-        }
-        
-        var result = response.ToString();
-        Console.WriteLine($"   📊 [CalculadoraExperta respondió]: {result.Substring(0, Math.Min(50, result.Length))}...\n");
-        
-        return result;
-    }
-}
-```
-
-### 3.2 Puntos Clave del Agente Especializado
-
-**Propósito único**: El agente tiene instrucciones muy específicas para matemáticas.
-
-**Método expuesto**: `SolveMathProblemAsync` será convertido en una función.
-
-**Logs de delegación**: Los `Console.WriteLine` muestran cuando se delega al agente.
-
----
-
-## Paso 4: Crear el Agente Coordinador
-
-### 4.1 Crear MainAgent.cs
-
-El agente principal **usa al calculador como herramienta**, decidiendo automáticamente cuándo delegarle.
-
-```csharp
-// ============================================================================
-// Archivo: MainAgent.cs
-// Descripción: Agente principal que usa otros agentes como herramientas
-// Módulo: 2 - Function Tools
-// Lab: 02-agent-as-tool
-// ============================================================================
-
-using System.ComponentModel;
-using Microsoft.Agents.AI;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
-
-namespace AgentComposition;
-
-/// <summary>
-/// Agente coordinador que delega tareas especializadas a otros agentes.
-/// Demuestra el patrón "agent-as-tool" donde agentes completos se exponen
-/// como funciones para ser invocados por un agente principal.
-/// </summary>
-public class MainAgent
-{
-    private readonly ChatCompletionAgent _agent;
-    private readonly CalculatorAgent _calculatorAgent;
-    
-    public MainAgent(Kernel kernel, CalculatorAgent calculatorAgent)
-    {
-        _calculatorAgent = calculatorAgent;
-        
-        // ===== Crear función que invoca al agente calculadora =====
-        // Esto convierte el agente especializado en una "function tool"
-        var calculateFunction = KernelFunctionFactory.CreateFromMethod(
-            method: async (string mathQuestion) => 
-            {
-                return await _calculatorAgent.SolveMathProblemAsync(mathQuestion);
-            },
-            functionName: "calculate",
-            description: "Resuelve problemas matemáticos complejos. Usa esta función cuando el usuario tenga preguntas sobre cálculos, matemáticas, porcentajes, ecuaciones o estadísticas."
-        );
-        
-        // Registrar la función en el kernel
-        kernel.Plugins.AddFromFunctions(
-            pluginName: "AgentesEspecializados",
-            description: "Agentes especializados para tareas específicas",
-            functions: new[] { calculateFunction }
-        );
-        
-        // ===== Crear agente principal =====
-        _agent = new ChatCompletionAgent()
-        {
-            Name = "AsistenteGeneral",
-            Instructions = """
-                Eres un asistente general llamado AsistenteGeneral.
-                Puedes ayudar con muchas tareas, pero tienes acceso a un experto matemático.
-                
-                REGLAS IMPORTANTES:
-                1. Para preguntas de matemáticas, cálculos, porcentajes o estadísticas:
-                   → USA la función 'calculate' para delegarlas al experto
-                2. Para otras preguntas (conversación general, información, consejos):
-                   → Responde tú directamente
-                
-                Siempre responde en español de forma amigable.
-                Cuando delegues a la calculadora, presenta los resultados de forma clara.
-                """,
-            Kernel = kernel,
-            Arguments = new KernelArguments(
-                new AzureOpenAIPromptExecutionSettings
-                {
-                    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-                }
-            )
-        };
-    }
-    
-    /// <summary>
-    /// Nombre del agente principal
-    /// </summary>
-    public string Name => _agent.Name;
-    
-    /// <summary>
-    /// Procesa un mensaje del usuario, delegando a agentes especializados cuando sea necesario.
-    /// </summary>
-    public async IAsyncEnumerable<string> ProcessMessageAsync(ChatHistory chatHistory)
-    {
-        await foreach (var message in _agent.InvokeStreamingAsync(chatHistory))
-        {
-            yield return message.Content ?? "";
-        }
-    }
-}
-```
-
-### 4.2 La Técnica Clave: KernelFunctionFactory
-
-```csharp
-var calculateFunction = KernelFunctionFactory.CreateFromMethod(
-    method: async (string mathQuestion) => 
-    {
-        return await _calculatorAgent.SolveMathProblemAsync(mathQuestion);
-    },
-    functionName: "calculate",
-    description: "Resuelve problemas matemáticos..."
-);
-```
-
-**Esto convierte cualquier método en una función invocable por agentes**:
-- `method`: La función a ejecutar (puede ser async)
-- `functionName`: Identificador para el modelo
-- `description`: Guía para cuándo usarla
-
----
-
-## Paso 5: Implementar el Programa Principal
-
-### 5.1 Reemplazar Program.cs
-
-```csharp
-// ============================================================================
-// Archivo: Program.cs
-// Descripción: Demostración de composición de agentes (agent-as-tool)
-// Módulo: 2 - Function Tools
-// Lab: 02-agent-as-tool
-// ============================================================================
-
+using Microsoft.Agents.AI.Abstractions;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using AgentComposition;
 
 // ===== Configuración =====
 var configuration = new ConfigurationBuilder()
@@ -378,32 +135,91 @@ var deploymentName = configuration["AzureOpenAI:DeploymentName"]
 var apiKey = configuration["AzureOpenAI:ApiKey"] 
     ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
 
-// ===== Crear Kernel Base =====
-// Este kernel se compartirá entre agentes para optimizar recursos
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: deploymentName,
-    endpoint: endpoint,
+// ===== Crear Agente Especializado: Calculadora =====
+// Este agente se dedicará exclusivamente a operaciones matemáticas
+var calculatorAgent = new ChatCompletionAgent(
+    name: "CalculadoraExperta",
+    instructions: """
+        Eres un experto matemático llamado CalculadoraExperta.
+        Tu único propósito es resolver problemas matemáticos.
+        
+        Reglas:
+        1. Solo respondes preguntas matemáticas
+        2. Siempre muestras el proceso paso a paso
+        3. Usas notación matemática clara
+        4. Respondes en español
+        5. Si no es una pregunta matemática, indica que solo puedes hacer cálculos
+        
+        Ejemplos de lo que puedes hacer:
+        - Operaciones básicas (suma, resta, multiplicación, división)
+        - Porcentajes y proporciones
+        - Ecuaciones simples
+        - Conversiones de unidades
+        - Estadísticas básicas (promedio, mediana)
+        """,
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
     apiKey: apiKey
 );
 
-var kernel = builder.Build();
+Console.WriteLine("✓ CalculadoraExperta creada - Agente especializado en matemáticas");
 
-// ===== Crear Agente Especializado =====
-// El CalculatorAgent es un agente completo dedicado a matemáticas
-var calculatorAgent = new CalculatorAgent(kernel);
+// ===== Crear Función que Invoca al Agente Calculadora =====
+// Esta función será usada por el agente principal para delegar tareas matemáticas
+var calculateFunction = AIFunctionFactory.Create(
+    async (string mathQuestion) =>
+    {
+        Console.WriteLine($"\n   📊 [Delegando a CalculadoraExperta]: {mathQuestion}");
+        
+        // Crear historial temporal para esta consulta
+        var chat = new ChatHistory();
+        chat.AddUserMessage(mathQuestion);
+        
+        // Invocar el agente especializado
+        string result = "";
+        await foreach (var message in calculatorAgent.InvokeAsync(chat))
+        {
+            result += message.Content;
+        }
+        
+        Console.WriteLine($"   📊 [CalculadoraExperta respondió]: {result.Substring(0, Math.Min(50, result.Length))}...\n");
+        
+        return result;
+    },
+    name: "calculate",
+    description: "Resuelve problemas matemáticos complejos. Usa esta función cuando el usuario tenga preguntas sobre cálculos, matemáticas, porcentajes, ecuaciones o estadísticas."
+);
 
 // ===== Crear Agente Principal =====
-// MainAgent usa al CalculatorAgent como una "herramienta"
-// El kernel debe ser clonado para agregar plugins específicos del MainAgent
-var mainKernel = kernel.Clone();
-var mainAgent = new MainAgent(mainKernel, calculatorAgent);
+// Este agente usa la función calculate para delegar tareas matemáticas
+var mainAgent = new ChatCompletionAgent(
+    name: "AsistenteGeneral",
+    instructions: """
+        Eres un asistente general llamado AsistenteGeneral.
+        Puedes ayudar con muchas tareas, pero tienes acceso a un experto matemático.
+        
+        REGLAS IMPORTANTES:
+        1. Para preguntas de matemáticas, cálculos, porcentajes o estadísticas:
+           → USA la función 'calculate' para delegarlas al experto
+        2. Para otras preguntas (conversación general, información, consejos):
+           → Responde tú directamente
+        
+        Siempre responde en español de forma amigable.
+        Cuando delegues a la calculadora, presenta los resultados de forma clara.
+        """,
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey,
+    tools: new AIFunction[] { calculateFunction }
+);
+
+Console.WriteLine("✓ AsistenteGeneral creado - Agente coordinador con delegación");
 
 // ===== Historial de Conversación =====
 var chatHistory = new ChatHistory();
 
 // ===== Interfaz de Usuario =====
-Console.WriteLine("============================================");
+Console.WriteLine("\n============================================");
 Console.WriteLine("🤖 Composición de Agentes (Agent-as-Tool)");
 Console.WriteLine("============================================");
 Console.WriteLine($"Agente Principal: {mainAgent.Name}");
@@ -438,9 +254,9 @@ while (true)
     
     try
     {
-        await foreach (var content in mainAgent.ProcessMessageAsync(chatHistory))
+        await foreach (var message in mainAgent.InvokeAsync(chatHistory))
         {
-            Console.Write(content);
+            Console.Write(message.Content);
         }
         Console.WriteLine("\n");
     }
@@ -466,20 +282,49 @@ while (true)
 }
 ```
 
+### 3.2 La Técnica Clave: AIFunctionFactory con Agentes
+
+```csharp
+var calculateFunction = AIFunctionFactory.Create(
+    async (string mathQuestion) =>
+    {
+        var chat = new ChatHistory();
+        chat.AddUserMessage(mathQuestion);
+        
+        string result = "";
+        await foreach (var message in calculatorAgent.InvokeAsync(chat))
+        {
+            result += message.Content;
+        }
+        return result;
+    },
+    name: "calculate",
+    description: "Resuelve problemas matemáticos..."
+);
+```
+
+**Esto convierte un agente completo en una función invocable**:
+- El agente principal puede llamar a `calculate`
+- La función invoca internamente a `calculatorAgent`
+- El resultado se devuelve al agente principal
+
 ---
 
-## Paso 6: Ejecución
+## Paso 4: Ejecución
 
-### 6.1 Compilar y Ejecutar
+### 4.1 Compilar y Ejecutar
 
 ```bash
 dotnet build
 dotnet run
 ```
 
-### 6.2 Salida Esperada
+### 4.2 Salida Esperada
 
 ```
+✓ CalculadoraExperta creada - Agente especializado en matemáticas
+✓ AsistenteGeneral creado - Agente coordinador con delegación
+
 ============================================
 🤖 Composición de Agentes (Agent-as-Tool)
 ============================================
@@ -499,13 +344,13 @@ Escribe 'salir' para terminar
 👤 Tú: _
 ```
 
-### 6.3 Probar la Delegación
+### 4.3 Probar la Delegación
 
 **Prueba 1: Pregunta matemática (DEBE delegar)**
 ```
 👤 Tú: ¿Cuánto es 15% de 850?
 
-   📊 [CalculadoraExperta recibió]: ¿Cuánto es 15% de 850?
+   📊 [Delegando a CalculadoraExperta]: ¿Cuánto es 15% de 850?
    📊 [CalculadoraExperta respondió]: Para calcular el 15% de 850:...
 
 🤖 AsistenteGeneral: El 15% de 850 es 127.5. 
@@ -513,7 +358,7 @@ Escribe 'salir' para terminar
 El cálculo es: 850 × (15/100) = 850 × 0.15 = 127.5
 ```
 
-**Observa**: Aparece el log `[CalculadoraExperta recibió]` - ¡la delegación funcionó!
+**Observa**: Aparece el log `[Delegando a CalculadoraExperta]` - ¡la delegación funcionó!
 
 **Prueba 2: Pregunta general (NO debe delegar)**
 ```
@@ -521,71 +366,19 @@ El cálculo es: 850 × (15/100) = 850 × 0.15 = 127.5
 🤖 AsistenteGeneral: La capital de España es Madrid.
 ```
 
-**Observa**: No aparece ningún log de CalculadoraExperta - el agente principal respondió directamente.
-
-**Prueba 3: Estadísticas (DEBE delegar)**
-```
-👤 Tú: Calcula el promedio de 85, 92, 78, 95
-
-   📊 [CalculadoraExperta recibió]: Calcula el promedio de 85, 92, 78, 95
-   📊 [CalculadoraExperta respondió]: El promedio se calcula sumando...
-
-🤖 AsistenteGeneral: El promedio de 85, 92, 78 y 95 es 87.5.
-
-Proceso: (85 + 92 + 78 + 95) / 4 = 350 / 4 = 87.5
-```
+**Observa**: No aparece ningún log de delegación - el agente principal respondió directamente.
 
 ---
 
-## Paso 7: Validación
+## Paso 5: Validación
 
 ### ✅ Checkpoint: Verificación de Agent-as-Tool
 
 - [ ] ✅ El programa muestra ambos agentes al iniciar
-- [ ] ✅ Preguntas matemáticas activan el log `[CalculadoraExperta recibió]`
-- [ ] ✅ Preguntas generales NO activan el log de CalculadoraExperta
+- [ ] ✅ Preguntas matemáticas activan el log `[Delegando a CalculadoraExperta]`
+- [ ] ✅ Preguntas generales NO activan el log de delegación
 - [ ] ✅ El AsistenteGeneral presenta los resultados matemáticos de forma clara
 - [ ] ✅ Ambos agentes responden en español
-
-**Prueba de validación definitiva**:
-```
-👤 Tú: Primero dime la capital de Francia, y luego calcula 20% de 500
-```
-
-El agente debe:
-1. Responder "París" directamente
-2. Delegar el cálculo a CalculadoraExperta
-3. Presentar ambas respuestas
-
----
-
-## Experimentación (Opcional)
-
-### Experimento 1: Agregar Agente Traductor
-
-Crea un `TranslatorAgent` y exponlo como función:
-
-```csharp
-// En TranslatorAgent.cs
-public async Task<string> TranslateAsync(string text, string targetLanguage)
-{
-    // Similar a CalculatorAgent pero para traducciones
-}
-
-// En MainAgent.cs
-var translateFunction = KernelFunctionFactory.CreateFromMethod(
-    method: async (string text, string language) => 
-        await _translatorAgent.TranslateAsync(text, language),
-    functionName: "translate",
-    description: "Traduce texto a otro idioma"
-);
-```
-
-### Experimento 2: Cadena de Agentes
-
-Crea un flujo donde el resultado de un agente pasa al siguiente:
-- Usuario pregunta: "Calcula 15% de 1000 y tradúcelo al inglés"
-- CalculatorAgent calcula → TranslatorAgent traduce
 
 ---
 
@@ -602,29 +395,11 @@ Crea un flujo donde el resultado de un agente pasa al siguiente:
 description: "OBLIGATORIO usar para CUALQUIER cálculo numérico, porcentaje, promedio, suma, resta, multiplicación, división, o problema matemático de cualquier tipo."
 ```
 
----
+### Error de conexión
 
-### Error: "Kernel already has plugin"
+**Síntoma**: Error 401 o timeout.
 
-**Síntoma**: Error al agregar plugins repetidamente.
-
-**Causa**: El kernel se reutiliza y ya tiene el plugin.
-
-**Solución**: Usar `kernel.Clone()` para crear una copia limpia:
-```csharp
-var mainKernel = kernel.Clone();
-var mainAgent = new MainAgent(mainKernel, calculatorAgent);
-```
-
----
-
-### El agente especializado no responde correctamente
-
-**Síntoma**: CalculadoraExperta da respuestas incompletas o incorrectas.
-
-**Causa**: Las instrucciones del agente especializado no son claras.
-
-**Solución**: Revisa y mejora las instrucciones de CalculatorAgent.
+**Solución**: Verifica endpoint, API key y deployment name.
 
 ---
 
@@ -632,19 +407,10 @@ var mainAgent = new MainAgent(mainKernel, calculatorAgent);
 
 En este laboratorio aprendiste:
 
-✅ **Crear agentes especializados** con propósitos específicos  
-✅ **Convertir agentes en funciones** con `KernelFunctionFactory.CreateFromMethod`  
+✅ **Crear agentes especializados** con `ChatCompletionAgent`  
+✅ **Convertir agentes en funciones** con `AIFunctionFactory.Create`  
 ✅ **Componer sistemas multi-agente** donde el coordinador delega automáticamente  
 ✅ **El poder del patrón agent-as-tool** para modularidad y escalabilidad
-
-### Conceptos Clave
-
-| Concepto | Descripción |
-|----------|-------------|
-| **Agent-as-Tool** | Patrón donde un agente completo se expone como función |
-| **KernelFunctionFactory** | Factory para crear funciones desde métodos arbitrarios |
-| **Agente Coordinador** | Agente principal que orquesta a otros agentes |
-| **Agente Especializado** | Agente experto en un dominio específico |
 
 ### Diagrama del Flujo
 
@@ -664,13 +430,5 @@ Continúa con [Lab 03: Human Approval](../03-human-approval/) donde aprenderás 
 
 ---
 
-## Referencias
-
-- [Semantic Kernel Function Factory](https://learn.microsoft.com/semantic-kernel/concepts/kernel-functions)
-- [Agent Composition Patterns](https://learn.microsoft.com/microsoft-agent-framework/patterns/composition)
-- [Multi-Agent Systems](https://learn.microsoft.com/azure/ai-services/openai/concepts/multi-agent)
-
----
-
 **Tiempo completado**: ~25 minutos  
-**¡Felicitaciones!** 🎉 Has implementado tu primer sistema de composición de agentes.
+**¡Felicitaciones!** 🎉 Has implementado tu primer sistema de composición de agentes con Microsoft Agent Framework.

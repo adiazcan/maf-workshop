@@ -28,7 +28,7 @@ Al finalizar, tu agente podrá realizar operaciones sensibles de forma segura, s
 ### Conocimientos Previos
 - ✅ Completar Lab 01 (Custom Function Tool)
 - ✅ Completar Lab 02 (Agent-as-Tool)
-- Entender cómo funcionan las function tools
+- Entender cómo funcionan las function tools con `AIFunctionFactory`
 
 ### Configuración de Azure
 - ✅ Azure OpenAI Service con deployment de `gpt-5.2`
@@ -51,8 +51,6 @@ cd ApprovalWorkflow
 
 ```bash
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
-dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
-dotnet add package Azure.AI.OpenAI --version 2.0.0
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
@@ -102,12 +100,8 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft Agent Framework packages -->
+    <!-- Microsoft Agent Framework -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
-    
-    <!-- Azure OpenAI -->
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
     
     <!-- Configuration -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
@@ -130,7 +124,7 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
 
 ### 3.1 Crear SensitiveOperations.cs
 
-Este servicio contiene operaciones que **pausan para aprobación humana**:
+Este servicio contiene operaciones donde algunas **pausan para aprobación humana**:
 
 ```csharp
 // ============================================================================
@@ -140,9 +134,6 @@ Este servicio contiene operaciones que **pausan para aprobación humana**:
 // Lab: 03-human-approval
 // ============================================================================
 
-using System.ComponentModel;
-using Microsoft.SemanticKernel;
-
 namespace ApprovalWorkflow;
 
 /// <summary>
@@ -150,7 +141,7 @@ namespace ApprovalWorkflow;
 /// Demuestra el patrón Human-in-the-Loop donde ciertas acciones
 /// no se ejecutan automáticamente sino que pausan para confirmación.
 /// </summary>
-public class SensitiveOperations
+public static class SensitiveOperations
 {
     // Simulación de archivos en el sistema
     private static readonly Dictionary<string, string> _virtualFileSystem = new()
@@ -164,35 +155,42 @@ public class SensitiveOperations
 
     // Simulación de correos pendientes
     private static readonly List<PendingEmail> _pendingEmails = new();
+    
+    // Balance simulado de la cuenta
+    private static decimal _accountBalance = 10000.00m;
 
     /// <summary>
     /// Lista los archivos disponibles en el sistema virtual.
     /// Esta operación NO requiere aprobación (solo lectura).
     /// </summary>
-    [KernelFunction("list_files")]
-    [Description("Lista los archivos disponibles en el sistema. Úsala cuando el usuario quiera ver qué archivos existen.")]
-    public string ListFiles()
+    public static string ListFiles()
     {
         var files = string.Join("\n", _virtualFileSystem.Keys.Select(f => $"  📄 {f}"));
         return $"📁 Archivos en el sistema:\n{files}";
     }
 
     /// <summary>
+    /// Consulta el balance de la cuenta.
+    /// Esta operación NO requiere aprobación (solo lectura).
+    /// </summary>
+    public static string CheckBalance()
+    {
+        return $"💰 Balance actual: ${_accountBalance:N2}";
+    }
+
+    /// <summary>
     /// Elimina un archivo del sistema virtual.
     /// ⚠️ REQUIERE APROBACIÓN HUMANA antes de ejecutarse.
     /// </summary>
-    [KernelFunction("delete_file")]
-    [Description("Elimina un archivo del sistema. OPERACIÓN SENSIBLE: Requiere confirmación del usuario antes de ejecutar.")]
-    public string DeleteFile(
-        [Description("Ruta completa del archivo a eliminar")] string filePath)
+    public static string DeleteFile(string filePath)
     {
-        // ===== PASO 1: Validar que el archivo existe =====
+        // Validar que el archivo existe
         if (!_virtualFileSystem.ContainsKey(filePath))
         {
             return $"❌ Error: El archivo '{filePath}' no existe.";
         }
 
-        // ===== PASO 2: SOLICITAR APROBACIÓN HUMANA =====
+        // SOLICITAR APROBACIÓN HUMANA
         Console.WriteLine();
         Console.WriteLine("╔═══════════════════════════════════════════════════════╗");
         Console.WriteLine("║  ⚠️  APROBACIÓN REQUERIDA - OPERACIÓN SENSIBLE        ║");
@@ -203,324 +201,305 @@ public class SensitiveOperations
         Console.WriteLine("║  ¿Aprobar esta operación? (s/n):                      ║");
         Console.WriteLine("╚═══════════════════════════════════════════════════════╝");
         Console.Write(">>> ");
-        
-        var approval = Console.ReadLine()?.Trim().ToLower();
-        
-        // ===== PASO 3: Ejecutar o cancelar según la respuesta =====
-        if (approval == "s" || approval == "si" || approval == "sí" || approval == "yes")
+
+        var response = Console.ReadLine()?.Trim().ToLower();
+
+        if (response == "s" || response == "si" || response == "yes" || response == "y")
         {
-            // Aprobado: ejecutar la operación
             _virtualFileSystem.Remove(filePath);
-            Console.WriteLine("✅ Operación APROBADA y ejecutada.\n");
-            return $"✅ Archivo '{filePath}' eliminado exitosamente.";
+            return $"✅ Archivo '{filePath}' eliminado exitosamente. [APROBADO POR USUARIO]";
         }
         else
         {
-            // Rechazado: cancelar la operación
-            Console.WriteLine("🚫 Operación CANCELADA por el usuario.\n");
-            return $"🚫 Operación cancelada: El archivo '{filePath}' NO fue eliminado.";
+            return $"🚫 Operación CANCELADA por el usuario. El archivo '{filePath}' no fue eliminado.";
         }
     }
 
     /// <summary>
     /// Envía un correo electrónico.
-    /// ⚠️ REQUIERE APROBACIÓN HUMANA antes de enviarse.
-    /// </summary>
-    [KernelFunction("send_email")]
-    [Description("Envía un correo electrónico. OPERACIÓN SENSIBLE: Requiere confirmación antes de enviar.")]
-    public string SendEmail(
-        [Description("Dirección de correo del destinatario")] string recipient,
-        [Description("Asunto del correo")] string subject,
-        [Description("Contenido del mensaje")] string body)
-    {
-        // ===== SOLICITAR APROBACIÓN HUMANA =====
-        Console.WriteLine();
-        Console.WriteLine("╔═══════════════════════════════════════════════════════╗");
-        Console.WriteLine("║  ⚠️  APROBACIÓN REQUERIDA - ENVÍO DE CORREO           ║");
-        Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
-        Console.WriteLine($"║  Para: {recipient,-47} ║");
-        Console.WriteLine($"║  Asunto: {subject,-45} ║");
-        Console.WriteLine("║  Mensaje:                                             ║");
-        
-        // Mostrar mensaje truncado si es muy largo
-        var truncatedBody = body.Length > 50 ? body.Substring(0, 47) + "..." : body;
-        Console.WriteLine($"║    {truncatedBody,-49} ║");
-        
-        Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
-        Console.WriteLine("║  ¿Enviar este correo? (s/n):                          ║");
-        Console.WriteLine("╚═══════════════════════════════════════════════════════╝");
-        Console.Write(">>> ");
-        
-        var approval = Console.ReadLine()?.Trim().ToLower();
-        
-        if (approval == "s" || approval == "si" || approval == "sí" || approval == "yes")
-        {
-            // Simular envío de correo
-            _pendingEmails.Add(new PendingEmail(recipient, subject, body, DateTime.Now));
-            Console.WriteLine("✅ Correo ENVIADO.\n");
-            return $"✅ Correo enviado exitosamente a {recipient}.";
-        }
-        else
-        {
-            Console.WriteLine("🚫 Envío CANCELADO.\n");
-            return $"🚫 Envío cancelado: El correo a {recipient} NO fue enviado.";
-        }
-    }
-
-    /// <summary>
-    /// Realiza una transferencia de fondos (simulada).
     /// ⚠️ REQUIERE APROBACIÓN HUMANA antes de ejecutarse.
     /// </summary>
-    [KernelFunction("transfer_funds")]
-    [Description("Transfiere fondos a una cuenta. OPERACIÓN FINANCIERA SENSIBLE: Requiere aprobación obligatoria.")]
-    public string TransferFunds(
-        [Description("Cuenta de destino")] string destinationAccount,
-        [Description("Monto a transferir en euros")] decimal amount,
-        [Description("Concepto de la transferencia")] string concept)
+    public static string SendEmail(string to, string subject, string body)
     {
-        // ===== SOLICITAR APROBACIÓN HUMANA =====
+        // SOLICITAR APROBACIÓN HUMANA
         Console.WriteLine();
         Console.WriteLine("╔═══════════════════════════════════════════════════════╗");
-        Console.WriteLine("║  💰 APROBACIÓN REQUERIDA - TRANSFERENCIA FINANCIERA   ║");
+        Console.WriteLine("║  ⚠️  APROBACIÓN REQUERIDA - OPERACIÓN SENSIBLE        ║");
         Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
-        Console.WriteLine($"║  Cuenta destino: {destinationAccount,-37} ║");
-        Console.WriteLine($"║  Monto: {amount:C2,-46} ║");
-        Console.WriteLine($"║  Concepto: {concept,-43} ║");
+        Console.WriteLine($"║  Acción: ENVIAR CORREO                                ║");
+        Console.WriteLine($"║  Para: {to,-47} ║");
+        Console.WriteLine($"║  Asunto: {subject,-44} ║");
         Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
-        Console.WriteLine("║  ⚠️  Esta acción NO puede deshacerse.                  ║");
-        Console.WriteLine("║  ¿Confirmar transferencia? (s/n):                     ║");
+        Console.WriteLine("║  ¿Aprobar esta operación? (s/n):                      ║");
         Console.WriteLine("╚═══════════════════════════════════════════════════════╝");
         Console.Write(">>> ");
-        
-        var approval = Console.ReadLine()?.Trim().ToLower();
-        
-        if (approval == "s" || approval == "si" || approval == "sí" || approval == "yes")
+
+        var response = Console.ReadLine()?.Trim().ToLower();
+
+        if (response == "s" || response == "si" || response == "yes" || response == "y")
         {
-            Console.WriteLine("✅ Transferencia APROBADA y procesada.\n");
-            return $"✅ Transferencia de {amount:C2} a {destinationAccount} completada. Concepto: {concept}";
+            _pendingEmails.Add(new PendingEmail(to, subject, body, DateTime.Now));
+            return $"✅ Correo enviado a '{to}' con asunto '{subject}'. [APROBADO POR USUARIO]";
         }
         else
         {
-            Console.WriteLine("🚫 Transferencia CANCELADA.\n");
-            return $"🚫 Transferencia cancelada: No se transfirieron fondos a {destinationAccount}.";
+            return $"🚫 Envío de correo CANCELADO por el usuario.";
         }
     }
 
     /// <summary>
-    /// Consulta el saldo actual (operación de lectura, NO requiere aprobación).
+    /// Transfiere dinero a otra cuenta.
+    /// ⚠️ REQUIERE APROBACIÓN HUMANA antes de ejecutarse.
     /// </summary>
-    [KernelFunction("check_balance")]
-    [Description("Consulta el saldo disponible en la cuenta. Operación de solo lectura.")]
-    public string CheckBalance()
+    public static string TransferFunds(string toAccount, decimal amount, string concept)
     {
-        // Simular saldo
-        return "💳 Saldo disponible: €2,450.75";
+        // Validar fondos suficientes
+        if (amount > _accountBalance)
+        {
+            return $"❌ Error: Fondos insuficientes. Balance: ${_accountBalance:N2}, Monto solicitado: ${amount:N2}";
+        }
+
+        // SOLICITAR APROBACIÓN HUMANA
+        Console.WriteLine();
+        Console.WriteLine("╔═══════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  ⚠️  APROBACIÓN REQUERIDA - OPERACIÓN SENSIBLE        ║");
+        Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
+        Console.WriteLine($"║  Acción: TRANSFERENCIA BANCARIA                       ║");
+        Console.WriteLine($"║  Cuenta destino: {toAccount,-35} ║");
+        Console.WriteLine($"║  Monto: ${amount,-45:N2} ║");
+        Console.WriteLine($"║  Concepto: {concept,-41} ║");
+        Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
+        Console.WriteLine("║  ¿Aprobar esta operación? (s/n):                      ║");
+        Console.WriteLine("╚═══════════════════════════════════════════════════════╝");
+        Console.Write(">>> ");
+
+        var response = Console.ReadLine()?.Trim().ToLower();
+
+        if (response == "s" || response == "si" || response == "yes" || response == "y")
+        {
+            _accountBalance -= amount;
+            return $"✅ Transferencia de ${amount:N2} a cuenta '{toAccount}' completada. Nuevo balance: ${_accountBalance:N2}. [APROBADO POR USUARIO]";
+        }
+        else
+        {
+            return $"🚫 Transferencia CANCELADA por el usuario. No se realizó ningún movimiento.";
+        }
     }
 }
 
 /// <summary>
-/// Estructura para almacenar correos pendientes/enviados
+/// Representa un correo pendiente de envío.
 /// </summary>
-internal record PendingEmail(
-    string Recipient,
-    string Subject,
-    string Body,
-    DateTime SentAt
-);
+public record PendingEmail(string To, string Subject, string Body, DateTime CreatedAt);
 ```
 
-### 3.2 El Patrón de Aprobación
+### 3.2 Puntos Clave del Código
 
-La estructura clave para implementar aprobación humana:
-
-```csharp
-public string SensitiveOperation(string param)
-{
-    // 1. Validaciones previas (opcional)
-    if (!IsValid(param)) return "Error: ...";
-    
-    // 2. MOSTRAR INFORMACIÓN y pedir aprobación
-    Console.WriteLine("⚠️ APROBACIÓN REQUERIDA");
-    Console.WriteLine($"Acción: {descripcion}");
-    Console.WriteLine("¿Aprobar? (s/n): ");
-    
-    // 3. LEER respuesta del usuario
-    var approval = Console.ReadLine()?.ToLower();
-    
-    // 4. Ejecutar o cancelar
-    if (approval == "s" || approval == "si")
-    {
-        // EJECUTAR la operación
-        return "✅ Operación completada";
-    }
-    else
-    {
-        // NO ejecutar
-        return "🚫 Operación cancelada";
-    }
-}
-```
+| Elemento | Descripción |
+|----------|-------------|
+| **Métodos estáticos** | Todos los métodos son estáticos para usar con `AIFunctionFactory.Create` |
+| **ListFiles y CheckBalance** | Operaciones de solo lectura, NO requieren aprobación |
+| **DeleteFile, SendEmail, TransferFunds** | ⚠️ REQUIEREN aprobación humana antes de ejecutar |
+| **Console.ReadLine()** | Pausa la ejecución hasta que el usuario responde |
+| **Validaciones** | Verificar existencia de archivo, fondos suficientes, etc. |
 
 ---
 
-## Paso 4: Implementar el Agente
+## Paso 4: Implementar el Agente Principal
 
-### 4.1 Reemplazar Program.cs
+### 4.1 Crear Program.cs
 
 ```csharp
 // ============================================================================
 // Archivo: Program.cs
-// Descripción: Demostración de Human-in-the-Loop para operaciones sensibles
+// Descripción: Agente con Human-in-the-Loop para operaciones sensibles
 // Módulo: 2 - Function Tools
 // Lab: 03-human-approval
 // ============================================================================
 
+using Azure.AI.OpenAI;
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Abstractions;
+using Microsoft.Agents.AI.ChatCompletion;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
-using ApprovalWorkflow;
 
-// ===== Configuración =====
+// Configuración
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile("appsettings.json", optional: false)
     .AddUserSecrets<Program>()
     .Build();
 
-var endpoint = configuration["AzureOpenAI:Endpoint"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:Endpoint no configurado");
-var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:DeploymentName no configurado");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
+var endpoint = configuration["AzureOpenAI:Endpoint"]!;
+var apiKey = configuration["AzureOpenAI:ApiKey"]!;
+var deploymentName = configuration["AzureOpenAI:DeploymentName"]!;
 
-// ===== Crear Kernel =====
-var builder = Kernel.CreateBuilder();
+// Crear cliente OpenAI
+var openAIClient = new AzureOpenAIClient(
+    new Uri(endpoint),
+    new System.ClientModel.ApiKeyCredential(apiKey));
+var chatClient = openAIClient.AsChatClient(deploymentName);
 
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: deploymentName,
-    endpoint: endpoint,
-    apiKey: apiKey
+// Crear herramientas usando AIFunctionFactory
+// Operaciones de SOLO LECTURA (sin aprobación)
+var listFilesFunction = AIFunctionFactory.Create(
+    ApprovalWorkflow.SensitiveOperations.ListFiles,
+    name: "list_files",
+    description: "Lista los archivos disponibles en el sistema. Operación segura de solo lectura."
 );
 
-// Registrar las operaciones sensibles como plugin
-builder.Plugins.AddFromType<SensitiveOperations>();
+var checkBalanceFunction = AIFunctionFactory.Create(
+    ApprovalWorkflow.SensitiveOperations.CheckBalance,
+    name: "check_balance",
+    description: "Consulta el balance actual de la cuenta bancaria. Operación segura de solo lectura."
+);
 
-var kernel = builder.Build();
+// Operaciones SENSIBLES (requieren aprobación)
+var deleteFileFunction = AIFunctionFactory.Create(
+    ApprovalWorkflow.SensitiveOperations.DeleteFile,
+    name: "delete_file",
+    description: "Elimina un archivo del sistema. OPERACIÓN SENSIBLE: Requiere confirmación del usuario antes de ejecutar."
+);
 
-// ===== Crear Agente =====
-var agent = new ChatCompletionAgent()
-{
-    Name = "AsistenteSeguro",
-    Instructions = """
-        Eres un asistente administrativo llamado AsistenteSeguro.
-        Tienes acceso a operaciones del sistema que pueden ser sensibles.
+var sendEmailFunction = AIFunctionFactory.Create(
+    ApprovalWorkflow.SensitiveOperations.SendEmail,
+    name: "send_email",
+    description: "Envía un correo electrónico. OPERACIÓN SENSIBLE: Requiere confirmación del usuario antes de ejecutar."
+);
+
+var transferFundsFunction = AIFunctionFactory.Create(
+    ApprovalWorkflow.SensitiveOperations.TransferFunds,
+    name: "transfer_funds",
+    description: "Transfiere dinero a otra cuenta bancaria. OPERACIÓN SENSIBLE: Requiere confirmación del usuario antes de ejecutar."
+);
+
+// Crear agente con todas las herramientas
+var agent = new ChatCompletionAgent(
+    chatClient: chatClient,
+    name: "AsistenteSeguro",
+    instructions: """
+        Eres un asistente de productividad que ayuda a los usuarios con:
+        - Gestión de archivos (listar, eliminar)
+        - Comunicaciones (enviar correos)
+        - Operaciones bancarias (consultar balance, transferir)
         
-        OPERACIONES DISPONIBLES:
-        1. list_files - Ver archivos (sin aprobación)
-        2. delete_file - Eliminar archivos (REQUIERE APROBACIÓN)
-        3. check_balance - Ver saldo (sin aprobación)
-        4. transfer_funds - Transferir dinero (REQUIERE APROBACIÓN)
-        5. send_email - Enviar correos (REQUIERE APROBACIÓN)
+        IMPORTANTE - REGLAS DE SEGURIDAD:
+        1. Para operaciones de SOLO LECTURA (listar archivos, consultar balance), 
+           puedes ejecutarlas directamente.
+        2. Para operaciones SENSIBLES (eliminar archivos, enviar correos, transferir dinero),
+           el sistema solicitará confirmación del usuario.
+        3. NUNCA intentes evadir el sistema de aprobación.
+        4. Si el usuario cancela una operación, respeta su decisión.
+        5. Siempre informa al usuario qué operación vas a realizar ANTES de ejecutarla.
         
-        REGLAS DE SEGURIDAD:
-        - Antes de operaciones sensibles, informa al usuario que se pedirá confirmación
-        - Si el usuario cancela, respeta su decisión y confirma la cancelación
-        - Nunca intentes evadir las aprobaciones
-        
-        Responde siempre en español de forma profesional.
+        Sé amable, claro y transparente en todas tus interacciones.
         """,
-    Kernel = kernel,
-    Arguments = new KernelArguments(
-        new AzureOpenAIPromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        }
-    )
-};
+    tools: new AIFunction[]
+    {
+        listFilesFunction,
+        checkBalanceFunction,
+        deleteFileFunction,
+        sendEmailFunction,
+        transferFundsFunction
+    }
+);
 
-// ===== Historial =====
-var chatHistory = new ChatHistory();
-
-// ===== Interfaz =====
-Console.WriteLine("╔═══════════════════════════════════════════════════════╗");
-Console.WriteLine("║  🔒 Workflow con Aprobación Humana (Human-in-the-Loop)║");
-Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
-Console.WriteLine("║  Agente: AsistenteSeguro                              ║");
-Console.WriteLine("║                                                       ║");
-Console.WriteLine("║  Operaciones de SOLO LECTURA (sin aprobación):        ║");
-Console.WriteLine("║    • Listar archivos                                  ║");
-Console.WriteLine("║    • Ver saldo                                        ║");
-Console.WriteLine("║                                                       ║");
-Console.WriteLine("║  Operaciones SENSIBLES (requieren aprobación):        ║");
-Console.WriteLine("║    • Eliminar archivos                                ║");
-Console.WriteLine("║    • Enviar correos                                   ║");
-Console.WriteLine("║    • Transferir fondos                                ║");
-Console.WriteLine("╠═══════════════════════════════════════════════════════╣");
-Console.WriteLine("║  Escribe 'salir' para terminar                        ║");
-Console.WriteLine("╚═══════════════════════════════════════════════════════╝");
+// Mostrar banner
+Console.WriteLine("╔═══════════════════════════════════════════════════════════╗");
+Console.WriteLine("║  🔐 Asistente con Aprobación Humana                       ║");
+Console.WriteLine("║  Microsoft Agent Framework - Lab 03                       ║");
+Console.WriteLine("╠═══════════════════════════════════════════════════════════╣");
+Console.WriteLine("║  📁 Listar archivos    - Sin aprobación                   ║");
+Console.WriteLine("║  💰 Consultar balance  - Sin aprobación                   ║");
+Console.WriteLine("║  🗑️  Eliminar archivo  - ⚠️ Requiere aprobación           ║");
+Console.WriteLine("║  📧 Enviar correo      - ⚠️ Requiere aprobación           ║");
+Console.WriteLine("║  💸 Transferir dinero  - ⚠️ Requiere aprobación           ║");
+Console.WriteLine("╠═══════════════════════════════════════════════════════════╣");
+Console.WriteLine("║  Escribe 'salir' para terminar                            ║");
+Console.WriteLine("╚═══════════════════════════════════════════════════════════╝");
 Console.WriteLine();
 
-Console.WriteLine("💡 Prueba estas acciones:");
-Console.WriteLine("   📋 'Lista los archivos del sistema'");
-Console.WriteLine("   🗑️  'Elimina el archivo /temporal/cache.tmp'");
-Console.WriteLine("   💳 'Muestra mi saldo'");
-Console.WriteLine("   💸 'Transfiere 100 euros a ES1234567890'");
-Console.WriteLine("   📧 'Envía un correo a juan@empresa.com'");
-Console.WriteLine();
+// Loop de conversación
+var history = new ChatHistory();
 
-// ===== Bucle de Conversación =====
 while (true)
 {
-    Console.Write("👤 Tú: ");
+    Console.Write("Tú: ");
     var userInput = Console.ReadLine();
-    
-    if (string.IsNullOrWhiteSpace(userInput) || 
-        userInput.Equals("salir", StringComparison.OrdinalIgnoreCase))
+
+    if (string.IsNullOrWhiteSpace(userInput))
+        continue;
+
+    if (userInput.Equals("salir", StringComparison.OrdinalIgnoreCase))
     {
-        Console.WriteLine("\n🔒 AsistenteSeguro: ¡Hasta pronto! Tus operaciones están protegidas. 🛡️\n");
+        Console.WriteLine("\n👋 ¡Hasta luego! Gracias por usar el asistente.");
         break;
     }
-    
-    chatHistory.AddUserMessage(userInput);
-    
-    Console.Write("🔒 AsistenteSeguro: ");
-    
-    try
+
+    // Agregar mensaje del usuario al historial
+    history.Add(new ChatMessage(ChatRole.User, userInput));
+
+    // Obtener respuesta del agente
+    Console.WriteLine();
+    Console.Write("🤖 Asistente: ");
+
+    var response = await agent.InvokeAsync(history);
+
+    // Procesar respuesta
+    foreach (var message in response.Messages)
     {
-        await foreach (var message in agent.InvokeStreamingAsync(chatHistory))
+        history.Add(message);
+        
+        if (message.Role == ChatRole.Assistant && !string.IsNullOrEmpty(message.Text))
         {
-            Console.Write(message.Content);
-        }
-        Console.WriteLine("\n");
-    }
-    catch (HttpRequestException ex)
-    {
-        Console.WriteLine($"\n❌ Error de conexión: {ex.Message}\n");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"\n❌ Error: {ex.Message}\n");
-    }
-    
-    // Gestión de historial
-    if (chatHistory.Count > 12)
-    {
-        var messagesToKeep = chatHistory.Skip(chatHistory.Count - 12).ToList();
-        chatHistory.Clear();
-        foreach (var msg in messagesToKeep)
-        {
-            chatHistory.Add(msg);
+            Console.WriteLine(message.Text);
         }
     }
+
+    Console.WriteLine();
 }
+```
+
+### 4.2 Flujo de Aprobación
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 FLUJO DE APROBACIÓN HUMANA                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Usuario: "Elimina el archivo /temporal/cache.tmp"         │
+│                    │                                        │
+│                    ▼                                        │
+│  ┌─────────────────────────────────────┐                   │
+│  │  Agente identifica operación        │                   │
+│  │  sensible: delete_file              │                   │
+│  └─────────────────────────────────────┘                   │
+│                    │                                        │
+│                    ▼                                        │
+│  ╔═════════════════════════════════════╗                   │
+│  ║  ⚠️ APROBACIÓN REQUERIDA            ║                   │
+│  ║  Acción: ELIMINAR ARCHIVO           ║                   │
+│  ║  ¿Aprobar? (s/n)                    ║                   │
+│  ╚═════════════════════════════════════╝                   │
+│                    │                                        │
+│          ┌────────┴────────┐                               │
+│          ▼                 ▼                               │
+│    ┌─────────┐       ┌─────────┐                           │
+│    │   "s"   │       │   "n"   │                           │
+│    │ Aprobar │       │ Rechazar│                           │
+│    └────┬────┘       └────┬────┘                           │
+│         │                 │                                │
+│         ▼                 ▼                                │
+│  ✅ Archivo          🚫 Operación                          │
+│     eliminado           cancelada                          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Paso 5: Ejecución
+## Paso 5: Ejecutar y Probar
 
 ### 5.1 Compilar y Ejecutar
 
@@ -529,14 +508,12 @@ dotnet build
 dotnet run
 ```
 
-### 5.2 Probar Operaciones de Solo Lectura
+### 5.2 Escenarios de Prueba
 
-**Lista de archivos (sin aprobación)**:
+**Escenario 1: Operación Segura (sin aprobación)**
 ```
-👤 Tú: Lista los archivos del sistema
-🔒 AsistenteSeguro: Aquí están los archivos disponibles:
-
-📁 Archivos en el sistema:
+Tú: ¿Qué archivos hay disponibles?
+🤖 Asistente: 📁 Archivos en el sistema:
   📄 /documentos/informe.txt
   📄 /documentos/presupuesto.xlsx
   📄 /temporal/cache.tmp
@@ -544,18 +521,9 @@ dotnet run
   📄 /importante/backup.zip
 ```
 
-**Consulta de saldo (sin aprobación)**:
+**Escenario 2: Operación Sensible - Aprobada**
 ```
-👤 Tú: Muéstrame mi saldo
-🔒 AsistenteSeguro: Tu saldo disponible es de €2,450.75
-```
-
-### 5.3 Probar Operaciones Sensibles con APROBACIÓN
-
-**Eliminar archivo - APROBAR**:
-```
-👤 Tú: Elimina el archivo /temporal/cache.tmp
-🔒 AsistenteSeguro: Voy a proceder a eliminar ese archivo. Se te pedirá confirmación.
+Tú: Elimina el archivo /temporal/cache.tmp
 
 ╔═══════════════════════════════════════════════════════╗
 ║  ⚠️  APROBACIÓN REQUERIDA - OPERACIÓN SENSIBLE        ║
@@ -566,207 +534,138 @@ dotnet run
 ║  ¿Aprobar esta operación? (s/n):                      ║
 ╚═══════════════════════════════════════════════════════╝
 >>> s
-✅ Operación APROBADA y ejecutada.
 
-🔒 AsistenteSeguro: El archivo /temporal/cache.tmp ha sido eliminado exitosamente.
+🤖 Asistente: ✅ El archivo /temporal/cache.tmp ha sido eliminado exitosamente.
 ```
 
-### 5.4 Probar Operaciones Sensibles con RECHAZO
-
-**Eliminar archivo - RECHAZAR**:
+**Escenario 3: Operación Sensible - Rechazada**
 ```
-👤 Tú: Elimina el archivo /importante/backup.zip
-🔒 AsistenteSeguro: Procederé a eliminar ese archivo, pero necesitaré tu confirmación.
+Tú: Transfiere $5000 a la cuenta 1234-5678 por concepto de "Pago servicios"
 
 ╔═══════════════════════════════════════════════════════╗
 ║  ⚠️  APROBACIÓN REQUERIDA - OPERACIÓN SENSIBLE        ║
 ╠═══════════════════════════════════════════════════════╣
-║  Acción: ELIMINAR ARCHIVO                             ║
-║  Archivo: /importante/backup.zip                      ║
+║  Acción: TRANSFERENCIA BANCARIA                       ║
+║  Cuenta destino: 1234-5678                            ║
+║  Monto: $5000.00                                      ║
+║  Concepto: Pago servicios                             ║
 ╠═══════════════════════════════════════════════════════╣
 ║  ¿Aprobar esta operación? (s/n):                      ║
 ╚═══════════════════════════════════════════════════════╝
 >>> n
-🚫 Operación CANCELADA por el usuario.
 
-🔒 AsistenteSeguro: Entendido. El archivo /importante/backup.zip NO ha sido eliminado.
+🤖 Asistente: 🚫 La transferencia fue cancelada por tu decisión.
 ```
 
-### 5.5 Probar Transferencia
-
+**Escenario 4: Múltiples Operaciones**
 ```
-👤 Tú: Transfiere 150 euros a ES9876543210 para pago de servicios
-
-╔═══════════════════════════════════════════════════════╗
-║  💰 APROBACIÓN REQUERIDA - TRANSFERENCIA FINANCIERA   ║
-╠═══════════════════════════════════════════════════════╣
-║  Cuenta destino: ES9876543210                         ║
-║  Monto: €150.00                                       ║
-║  Concepto: pago de servicios                          ║
-╠═══════════════════════════════════════════════════════╣
-║  ⚠️  Esta acción NO puede deshacerse.                  ║
-║  ¿Confirmar transferencia? (s/n):                     ║
-╚═══════════════════════════════════════════════════════╝
->>> s
-✅ Transferencia APROBADA y procesada.
+Tú: Consulta mi balance y después envía un correo a jefe@empresa.com 
+    con asunto "Reporte Mensual" diciendo "Adjunto el reporte del mes"
 ```
 
 ---
 
-## Paso 6: Validación
+## Paso 6: Ejercicios Adicionales
 
-### ✅ Checkpoint: Verificación de Human-in-the-Loop
+### Ejercicio 1: Añadir Niveles de Aprobación
+Modifica el sistema para tener diferentes niveles de aprobación según el riesgo:
+- **Bajo**: Solo confirmación simple
+- **Medio**: Confirmación + motivo
+- **Alto**: Confirmación + motivo + código de seguridad
 
-- [ ] ✅ Operaciones de lectura (list_files, check_balance) NO piden aprobación
-- [ ] ✅ Operaciones sensibles (delete_file, send_email, transfer_funds) SIEMPRE piden aprobación
-- [ ] ✅ Al escribir 's' o 'si', la operación se ejecuta
-- [ ] ✅ Al escribir 'n' o cualquier otra cosa, la operación se cancela
-- [ ] ✅ El agente confirma tanto la ejecución como la cancelación
+### Ejercicio 2: Registro de Auditoría
+Añade un sistema de logging que registre:
+- Todas las operaciones solicitadas
+- Si fueron aprobadas o rechazadas
+- Timestamp y usuario
 
-**Prueba de validación definitiva**:
-```
-👤 Tú: Elimina todos los archivos temporales
-```
-
-El sistema debe:
-1. Intentar eliminar cada archivo temporal
-2. Pedir aprobación individual para cada uno
-3. El usuario puede aprobar unos y rechazar otros
+### Ejercicio 3: Timeout de Aprobación
+Implementa un timeout donde si el usuario no responde en X segundos, la operación se cancela automáticamente.
 
 ---
 
-## Experimentación (Opcional)
+## Conceptos Clave Aprendidos
 
-### Experimento 1: Agregar Niveles de Aprobación
+### 1. Patrón Human-in-the-Loop
+El agente no actúa autónomamente en operaciones críticas; siempre hay supervisión humana.
 
-Implementa aprobación de dos pasos para operaciones críticas:
+### 2. Clasificación de Operaciones
+
+| Tipo | Ejemplo | Aprobación |
+|------|---------|------------|
+| Lectura | Listar archivos, consultar balance | ❌ No requiere |
+| Escritura segura | Crear archivo temporal | ⚠️ Opcional |
+| Sensible | Eliminar, enviar correo, transferir | ✅ Siempre requiere |
+
+### 3. AIFunctionFactory.Create
+Usamos `AIFunctionFactory.Create` para registrar métodos estáticos como herramientas del agente:
 
 ```csharp
-[KernelFunction("critical_operation")]
-public string CriticalOperation(...)
-{
-    // Primera aprobación
-    Console.WriteLine("¿Aprobar operación? (s/n):");
-    var firstApproval = Console.ReadLine();
-    if (firstApproval != "s") return "Cancelado";
-    
-    // Segunda aprobación (confirmar)
-    Console.WriteLine("⚠️ Escriba 'CONFIRMAR' para proceder:");
-    var confirm = Console.ReadLine();
-    if (confirm != "CONFIRMAR") return "Cancelado";
-    
-    // Ejecutar
-    return "Operación ejecutada";
-}
+var deleteFileFunction = AIFunctionFactory.Create(
+    SensitiveOperations.DeleteFile,
+    name: "delete_file",
+    description: "Elimina un archivo. OPERACIÓN SENSIBLE."
+);
 ```
 
-### Experimento 2: Logging de Aprobaciones
+### 4. UX de Aprobación
+La interfaz debe ser clara:
+- Mostrar exactamente qué se va a hacer
+- Dar opciones claras (s/n)
+- Confirmar el resultado
 
-Agrega registro de todas las aprobaciones/rechazos:
+---
 
+## Resolución de Problemas
+
+### El agente no solicita aprobación
+
+**Causa**: El método de aprobación no está siendo ejecutado correctamente.
+
+**Solución**: Verificar que la función esté registrada con `AIFunctionFactory.Create`:
 ```csharp
-private static readonly List<AuditLog> _auditLog = new();
+var deleteFileFunction = AIFunctionFactory.Create(
+    SensitiveOperations.DeleteFile,
+    name: "delete_file",
+    description: "..."
+);
+```
 
-// En cada función sensible:
-_auditLog.Add(new AuditLog(
-    Operation: "delete_file",
-    Parameters: filePath,
-    Approved: approval == "s",
-    Timestamp: DateTime.Now
-));
+### La aprobación no se muestra en consola
 
-// Función para ver el log
-[KernelFunction("show_audit_log")]
-public string ShowAuditLog() => ...
+**Causa**: El output está siendo capturado o bufferizado.
+
+**Solución**: Usar `Console.Out.Flush()` después de escribir o ejecutar sin redirección.
+
+### Error de conexión
+
+**Causa**: Credenciales incorrectas o endpoint inválido.
+
+**Solución**: Verificar `appsettings.json` y user secrets:
+```bash
+dotnet user-secrets list
 ```
 
 ---
 
-## Solución de Problemas
+## Próximos Pasos
 
-### La aprobación no aparece
-
-**Síntoma**: El agente ejecuta operaciones sin pedir aprobación.
-
-**Causa**: La función puede no estar registrada o el agente usa una versión diferente.
-
-**Solución**: 
-1. Verifica que `builder.Plugins.AddFromType<SensitiveOperations>();` está presente
-2. Asegúrate de que la función tiene `[KernelFunction]`
-
----
-
-### El agente no respeta la cancelación
-
-**Síntoma**: El agente dice que canceló pero la operación se ejecutó.
-
-**Causa**: El return después de la cancelación no está correcto.
-
-**Solución**: Verifica que el `else` del if de aprobación retorna inmediatamente sin ejecutar la operación.
-
----
-
-### La interfaz se corrompe
-
-**Síntoma**: Los caracteres del cuadro no se muestran correctamente.
-
-**Causa**: La terminal no soporta caracteres Unicode.
-
-**Solución**: Cambia los caracteres del cuadro por ASCII simple:
-```csharp
-Console.WriteLine("+-----------------------------------+");
-Console.WriteLine("|  APROBACIÓN REQUERIDA             |");
-```
+Continúa con el **Módulo 3: Workflows Multi-Agente** donde aprenderás:
+- Patrones de workflow secuencial
+- Ejecución paralela de agentes
+- Delegación inteligente de tareas
+- Group chat con múltiples agentes
 
 ---
 
 ## Resumen
 
 En este laboratorio aprendiste:
+- ✅ Implementar el patrón **Human-in-the-Loop**
+- ✅ Clasificar operaciones por nivel de sensibilidad
+- ✅ Crear un flujo de aprobación con `Console.ReadLine()`
+- ✅ Usar `AIFunctionFactory.Create` para registrar herramientas
+- ✅ Diseñar UX clara para solicitudes de aprobación
+- ✅ Manejar tanto aprobaciones como rechazos
 
-✅ **Implementar Human-in-the-Loop** para operaciones sensibles  
-✅ **Pausar ejecución** dentro de una function tool  
-✅ **Manejar aprobación y rechazo** de forma diferenciada  
-✅ **Clasificar operaciones** por nivel de sensibilidad  
-✅ **Informar al usuario** antes y después de cada decisión
-
-### Conceptos Clave
-
-| Concepto | Descripción |
-|----------|-------------|
-| **Human-in-the-Loop** | Patrón donde humanos aprueban acciones del agente |
-| **Operación Sensible** | Acción que no debe ejecutarse sin supervisión |
-| **Gate de Aprobación** | Punto de pausa que espera confirmación |
-| **Audit Trail** | Registro de aprobaciones/rechazos para auditoría |
-
-### Cuándo Usar Human-in-the-Loop
-
-| ✅ Usar | ❌ No Usar |
-|---------|-----------|
-| Eliminar datos | Consultar información |
-| Enviar comunicaciones | Buscar archivos |
-| Transacciones financieras | Calcular valores |
-| Cambios de configuración | Generar reportes |
-| Acciones irreversibles | Operaciones de lectura |
-
----
-
-## Próximos Pasos
-
-Has completado el **Módulo 2: Function Tools**. Continúa con:
-
-- **[Módulo 3: Workflows](../../modulo-03-workflows/)** - Orquestación de múltiples agentes
-- **Revisión**: Practica los 3 labs de este módulo hasta dominar los conceptos
-
----
-
-## Referencias
-
-- [Human-in-the-Loop AI Patterns](https://learn.microsoft.com/azure/ai-services/openai/concepts/human-in-the-loop)
-- [Responsible AI Guidelines](https://learn.microsoft.com/azure/ai-services/responsible-use-of-ai-overview)
-- [Function Tools Best Practices](https://learn.microsoft.com/semantic-kernel/agents/plugins/best-practices)
-
----
-
-**Tiempo completado**: ~20 minutos  
-**¡Felicitaciones!** 🎉 Has implementado un sistema seguro con aprobación humana.
+**¡Excelente!** Ahora tus agentes pueden realizar operaciones sensibles de forma segura, siempre con supervisión humana. 🔐

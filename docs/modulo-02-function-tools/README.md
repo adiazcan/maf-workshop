@@ -8,8 +8,8 @@
 
 Al completar este módulo, serás capaz de:
 
-1. Definir y registrar function tools en C# usando atributos
-2. Implementar function calling automático
+1. Definir y registrar function tools usando Microsoft Agent Framework
+2. Implementar function calling automático con `ChatCompletionAgent`
 3. Usar un agente como herramienta dentro de otro agente
 4. Implementar patrones de aprobación humana (human-in-the-loop)
 
@@ -17,7 +17,7 @@ Al completar este módulo, serás capaz de:
 
 ### ¿Qué son las Function Tools?
 
-Las **function tools** son métodos de C# que los agentes pueden invocar automáticamente para:
+Las **function tools** son funciones que los agentes pueden invocar automáticamente para:
 - Obtener información externa (APIs, bases de datos)
 - Realizar cálculos o transformaciones
 - Ejecutar acciones (enviar emails, crear tickets)
@@ -25,47 +25,46 @@ Las **function tools** son métodos de C# que los agentes pueden invocar automá
 
 **Ventaja clave**: El modelo decide **cuándo y con qué parámetros** llamar la función basándose en la conversación.
 
-### Definir Function Tools
+### Definir Function Tools con MAF
+
+En Microsoft Agent Framework, las function tools se definen usando `AIFunction` y `AIFunctionFactory`:
 
 ```csharp
-using Microsoft.SemanticKernel;
-using System.ComponentModel;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Abstractions;
 
-public class WeatherService
-{
-    [KernelFunction("get_weather")]
-    [Description("Obtiene el clima actual para una ubicación")]
-    public string GetWeather(
-        [Description("El nombre de la ciudad")] string city,
-        [Description("Código de país (ej: ES, US)")] string country = "ES")
+// Crear una función que el agente puede invocar
+var getWeatherFunction = AIFunctionFactory.Create(
+    (string city, string country = "ES") =>
     {
         // Simular llamada a API de clima
         return $"El clima en {city}, {country}: Soleado, 22°C";
-    }
-}
+    },
+    name: "get_weather",
+    description: "Obtiene el clima actual para una ubicación. Úsala cuando el usuario pregunte sobre el clima de una ciudad."
+);
 ```
 
 **Elementos clave**:
-- `[KernelFunction]`: Marca el método como invocable por el agente
-- `[Description]`: Ayuda al modelo a entender qué hace la función
-- Parámetros con descripciones claras: El modelo usa estas descripciones para decidir qué valores pasar
+- `AIFunctionFactory.Create`: Crea una función invocable por el agente
+- `name`: Identificador que usa el modelo para referirse a la función
+- `description`: Ayuda al modelo a entender qué hace y cuándo usarla
 
-### Registrar Function Tools
+### Registrar Function Tools en el Agente
 
 ```csharp
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion(...);
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
 
-// Registrar servicio como plugin
-builder.Plugins.AddFromType<WeatherService>();
-
-var kernel = builder.Build();
-
-var agent = new ChatCompletionAgent()
-{
-    Kernel = kernel,  // Agente tiene acceso a las funciones
-    Instructions = "Eres un asistente que puede proporcionar información del clima."
-};
+// Crear el agente con las herramientas registradas
+var agent = new ChatCompletionAgent(
+    name: "AgenteDelClima",
+    instructions: "Eres un asistente que puede proporcionar información del clima.",
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey,
+    tools: new[] { getWeatherFunction }  // Registrar las funciones
+);
 ```
 
 ### Function Calling Flow
@@ -73,7 +72,7 @@ var agent = new ChatCompletionAgent()
 ```mermaid
 sequenceDiagram
     participant U as Usuario
-    participant A as Agente
+    participant A as Agente (MAF)
     participant M as Azure OpenAI
     participant F as Function Tool
     
@@ -87,6 +86,36 @@ sequenceDiagram
     A->>U: "El clima en Madrid está soleado con 22°C"
 ```
 
+### Múltiples Function Tools
+
+Puedes registrar múltiples funciones en un agente:
+
+```csharp
+// Función para clima actual
+var getWeatherFunction = AIFunctionFactory.Create(
+    (string city) => $"Clima en {city}: Soleado, 22°C",
+    name: "get_weather",
+    description: "Obtiene el clima actual de una ciudad"
+);
+
+// Función para pronóstico
+var getForecastFunction = AIFunctionFactory.Create(
+    (string city, int days = 3) => $"Pronóstico para {city}: {days} días soleados",
+    name: "get_forecast",
+    description: "Obtiene el pronóstico del clima para los próximos días"
+);
+
+// Registrar ambas funciones en el agente
+var agent = new ChatCompletionAgent(
+    name: "AgenteDelClima",
+    instructions: "Eres un asistente experto en clima.",
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey,
+    tools: new[] { getWeatherFunction, getForecastFunction }
+);
+```
+
 ### Composición de Agentes
 
 **Patrón**: Usar un agente completo como función tool de otro agente.
@@ -97,53 +126,71 @@ sequenceDiagram
 - Escalabilidad: Reutilizar agentes en diferentes contextos
 
 ```csharp
-// Agente especializado
-var calculatorAgent = new ChatCompletionAgent()
-{
-    Name = "CalculatorAgent",
-    Instructions = "Eres un experto en cálculos matemáticos."
-};
-
-// Crear función que invoca al agente especializado
-var calculatorFunction = KernelFunctionFactory.CreateFromMethod(
-    async (string question) => {
-        var result = await calculatorAgent.InvokeAsync(question);
-        return result.Content;
-    },
-    "calculate",
-    "Realiza cálculos matemáticos complejos"
+// Agente especializado en cálculos
+var calculatorAgent = new ChatCompletionAgent(
+    name: "CalculatorAgent",
+    instructions: "Eres un experto en cálculos matemáticos. Solo respondes preguntas de matemáticas.",
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey
 );
 
-// Registrar en el agente principal
-mainAgent.Kernel.Plugins.AddFromFunctions("calculator", new[] { calculatorFunction });
+// Crear función que invoca al agente especializado
+var calculateFunction = AIFunctionFactory.Create(
+    async (string mathQuestion) =>
+    {
+        var chat = new ChatHistory();
+        chat.AddUserMessage(mathQuestion);
+        
+        string result = "";
+        await foreach (var message in calculatorAgent.InvokeAsync(chat))
+        {
+            result += message.Content;
+        }
+        return result;
+    },
+    name: "calculate",
+    description: "Resuelve problemas matemáticos complejos. Usa esta función para cálculos."
+);
+
+// Agente principal que usa al calculador como herramienta
+var mainAgent = new ChatCompletionAgent(
+    name: "AsistenteGeneral",
+    instructions: "Eres un asistente general. Para matemáticas, usa la función calculate.",
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey,
+    tools: new[] { calculateFunction }
+);
 ```
 
 ### Human-in-the-Loop Approval
 
-Para acciones sensibles (eliminar datos, enviar emails, gastos), **pausar ejecución** para pedir confirmación humana.
+Para acciones sensibles (eliminar datos, enviar emails, gastos), **pausar ejecución** para pedir confirmación humana:
 
 ```csharp
-[KernelFunction("delete_file")]
-[Description("Elimina un archivo del sistema")]
-public async Task<string> DeleteFile(
-    [Description("Ruta del archivo")] string filePath)
-{
-    // PAUSA: Pedir aprobación humana
-    Console.WriteLine($"⚠️ El agente quiere eliminar: {filePath}");
-    Console.WriteLine("¿Aprobar? (s/n): ");
-    var approval = Console.ReadLine();
-    
-    if (approval?.ToLower() == "s")
+// Función con aprobación humana
+var deleteFileFunction = AIFunctionFactory.Create(
+    (string filePath) =>
     {
-        // Ejecutar acción
-        File.Delete(filePath);
-        return "Archivo eliminado exitosamente";
-    }
-    else
-    {
-        return "Acción cancelada por el usuario";
-    }
-}
+        // PAUSA: Pedir aprobación humana
+        Console.WriteLine($"⚠️ El agente quiere eliminar: {filePath}");
+        Console.Write("¿Aprobar? (s/n): ");
+        var approval = Console.ReadLine();
+        
+        if (approval?.ToLower() == "s")
+        {
+            // Simular eliminación
+            return $"✅ Archivo '{filePath}' eliminado exitosamente";
+        }
+        else
+        {
+            return "🚫 Acción cancelada por el usuario";
+        }
+    },
+    name: "delete_file",
+    description: "Elimina un archivo del sistema. REQUIERE aprobación del usuario."
+);
 ```
 
 ## Labs Prácticos
@@ -154,8 +201,8 @@ public async Task<string> DeleteFile(
 Implementa un agente con una función personalizada para obtener información del clima.
 
 **Habilidades**:
-- Definir función con `[KernelFunction]`
-- Registrar plugin en el kernel
+- Crear funciones con `AIFunctionFactory.Create`
+- Registrar tools en `ChatCompletionAgent`
 - Verificar invocación automática
 
 ---
@@ -185,7 +232,7 @@ Implementa un workflow donde el agente debe obtener aprobación humana antes de 
 ## Checkpoint de Validación
 
 **Módulo completo cuando**:
-- ✅ El agente llama automáticamente a `GetWeather()` cuando se pregunta sobre clima
+- ✅ El agente llama automáticamente a la función de clima cuando se pregunta sobre el tiempo
 - ✅ El agente principal delega matemáticas al agente calculadora
 - ✅ El workflow de aprobación pausa y espera confirmación del usuario
 
@@ -196,22 +243,23 @@ Implementa un workflow donde el agente debe obtener aprobación humana antes de 
 ### "El agente no llama mi función"
 
 **Causa**: Descripción ambigua o faltante  
-**Solución**: Asegurar que `[Description]` explica claramente QUÉ hace y CUÁNDO usarla
+**Solución**: Asegurar que la descripción en `AIFunctionFactory.Create` explica claramente QUÉ hace y CUÁNDO usarla
 
 ### "Error: función no encontrada"
 
-**Causa**: Función no registrada en el kernel  
-**Solución**: Verificar `builder.Plugins.AddFromType<TuServicio>()`
+**Causa**: Función no registrada en el agente  
+**Solución**: Verificar que la función está en el array `tools` del constructor de `ChatCompletionAgent`
 
 ### "Función se llama con parámetros incorrectos"
 
 **Causa**: Descripciones de parámetros poco claras  
-**Solución**: Ser explícito: `[Description("Nombre de la ciudad en español, ej: Madrid")]`
+**Solución**: Ser explícito en la descripción: "Obtiene el clima para una CIUDAD (no país), ejemplo: Madrid, Barcelona"
 
 ## Recursos Adicionales
 
-- [Semantic Kernel Functions Guide](https://learn.microsoft.com/semantic-kernel/agents/plugins)
+- [Microsoft Agent Framework Documentation](https://learn.microsoft.com/microsoft-agents)
 - [Function Calling Best Practices](https://learn.microsoft.com/azure/ai-services/openai/how-to/function-calling)
+- [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
 
 ## Siguiente Módulo
 

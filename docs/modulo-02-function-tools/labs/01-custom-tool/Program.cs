@@ -1,15 +1,14 @@
 // ============================================================================
 // Archivo: Program.cs
-// Descripción: Agente con Function Tool personalizada para consultar el clima
+// Descripción: Agente con Function Tools usando Microsoft Agent Framework
 // Módulo: 2 - Function Tools
 // Lab: 01-custom-tool
 // ============================================================================
 
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Abstractions;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 using WeatherAgent;
 
 // ===== Configuración =====
@@ -28,28 +27,27 @@ var deploymentName = configuration["AzureOpenAI:DeploymentName"]
 var apiKey = configuration["AzureOpenAI:ApiKey"] 
     ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado. Usa: dotnet user-secrets set 'AzureOpenAI:ApiKey' 'tu-key'");
 
-// ===== Crear Kernel con Function Tools =====
-var builder = Kernel.CreateBuilder();
+// ===== Crear Function Tools =====
+// Usamos AIFunctionFactory.Create para definir funciones invocables por el agente
 
-// Agregar servicio de Azure OpenAI
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: deploymentName,
-    endpoint: endpoint,
-    apiKey: apiKey
+// Función para obtener el clima actual
+var getWeatherFunction = AIFunctionFactory.Create(
+    (string city, string country) => WeatherService.GetWeather(city, country ?? "ES"),
+    name: "get_weather",
+    description: "Obtiene el clima actual para una ubicación específica. Úsala cuando el usuario pregunte sobre el clima, temperatura o condiciones meteorológicas de una ciudad."
 );
 
-// ===== CLAVE: Registrar el servicio como plugin =====
-// Esto hace que las funciones decoradas con [KernelFunction] estén disponibles
-// para que el agente las invoque automáticamente
-builder.Plugins.AddFromType<WeatherService>();
+// Función para obtener el pronóstico
+var getForecastFunction = AIFunctionFactory.Create(
+    (string city, int days) => WeatherService.GetForecast(city, days > 0 ? days : 3),
+    name: "get_forecast",
+    description: "Obtiene el pronóstico del clima para los próximos días. Úsala cuando el usuario pregunte sobre el clima futuro o pronóstico de una ciudad."
+);
 
-var kernel = builder.Build();
-
-// ===== Crear Agente con Function Calling Habilitado =====
-var agent = new ChatCompletionAgent()
-{
-    Name = "AgenteDelClima",
-    Instructions = """
+// ===== Crear Agente con Function Tools =====
+var agent = new ChatCompletionAgent(
+    name: "AgenteDelClima",
+    instructions: """
         Eres un asistente experto en clima llamado AgenteDelClima.
         Puedes proporcionar información del clima actual y pronósticos.
         
@@ -60,22 +58,18 @@ var agent = new ChatCompletionAgent()
         Siempre responde en español de forma amigable y útil.
         Si el usuario no especifica una ciudad, pregunta amablemente cuál ciudad le interesa.
         """,
-    Kernel = kernel,
-    // Configurar para que el agente pueda llamar funciones automáticamente
-    Arguments = new KernelArguments(
-        new AzureOpenAIPromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        }
-    )
-};
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
+    apiKey: apiKey,
+    tools: new AIFunction[] { getWeatherFunction, getForecastFunction }
+);
 
 // ===== Historial de Conversación =====
 var chatHistory = new ChatHistory();
 
 // ===== Interfaz de Usuario =====
 Console.WriteLine("============================================");
-Console.WriteLine("🌤️  Agente del Clima con Function Tools");
+Console.WriteLine("🌤️  Agente del Clima con Function Tools (MAF)");
 Console.WriteLine("============================================");
 Console.WriteLine($"Agente: {agent.Name}");
 Console.WriteLine("Funciones disponibles: get_weather, get_forecast");
@@ -108,7 +102,7 @@ while (true)
     try
     {
         // Invocar el agente - automáticamente decidirá si llamar funciones
-        await foreach (var message in agent.InvokeStreamingAsync(chatHistory))
+        await foreach (var message in agent.InvokeAsync(chatHistory))
         {
             Console.Write(message.Content);
         }
@@ -124,7 +118,7 @@ while (true)
         Console.WriteLine($"\n❌ Error: {ex.Message}\n");
     }
     
-    // Gestión de historial
+    // Gestión de historial - mantener últimos 10 mensajes
     if (chatHistory.Count > 10)
     {
         var messagesToKeep = chatHistory.Skip(chatHistory.Count - 10).ToList();
