@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maf-workshop/schemas/workshop-module.schema.json",
+  "title": "WorkshopModule",
+  "description": "Schema for a Microsoft Agent Framework workshop module",
+  "type": "object",
+  "required": [
+    "moduleId",
+    "moduleNumber",
+    "title",
+    "description",
+    "learningObjectives",
+    "prerequisites",
+    "estimatedDuration",
+    "theoryDuration",
+    "labsDuration",
+    "checkpointCriteria",
+    "targetSuccessRate",
+    "contentPath",
+    "hasTheoryDoc",
+    "labs",
+    "keyTechnologies"
+  ],
+  "properties": {
+    "moduleId": {
+      "type": "string",
+      "pattern": "^modulo-\\d{2}-[a-z-]+$",
+      "description": "Unique identifier (e.g., 'modulo-01-fundamentos')"
+    },
+    "moduleNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7,
+      "description": "Sequential module order (1-7)"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 100,
+      "description": "Spanish title of the module"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 50,
+      "maxLength": 500,
+      "description": "Brief overview in Spanish (2-3 sentences)"
+    },
+    "learningObjectives": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 20,
+        "maxLength": 200
+      },
+      "minItems": 2,
+      "maxItems": 6,
+      "description": "Specific skills/knowledge participants will gain"
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^modulo-\\d{2}-[a-z-]+$"
+      },
+      "description": "IDs of modules that must be completed first"
+    },
+    "estimatedDuration": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 180,
+      "description": "Total time in minutes"
+    },
+    "theoryDuration": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 60,
+      "description": "Time for conceptual explanation in minutes"
+    },
+    "labsDuration": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 120,
+      "description": "Time for hands-on exercises in minutes"
+    },
+    "checkpointCriteria": {
+      "type": "string",
+      "minLength": 30,
+      "maxLength": 300,
+      "description": "Clear success criteria for instructor validation"
+    },
+    "targetSuccessRate": {
+      "type": "integer",
+      "minimum": 70,
+      "maximum": 95,
+      "description": "Expected percentage of participants completing successfully"
+    },
+    "contentPath": {
+      "type": "string",
+      "pattern": "^docs/modulo-\\d{2}-[a-z-]+/$",
+      "description": "Relative path to module documentation"
+    },
+    "hasTheoryDoc": {
+      "type": "boolean",
+      "description": "Whether module includes README.md with theory"
+    },
+    "labs": {
+      "type": "array",
+      "items": {
+        "$ref": "lab.schema.json"
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Array of hands-on lab exercises"
+    },
+    "keyTechnologies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Main technologies/concepts introduced"
+    }
+  }
+}

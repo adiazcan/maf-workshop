@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maf-workshop/schemas/lab.schema.json",
+  "title": "Lab",
+  "description": "Schema for a hands-on lab exercise within a module",
+  "type": "object",
+  "required": [
+    "labId",
+    "labNumber",
+    "title",
+    "objective",
+    "estimatedTime",
+    "complexity",
+    "labType",
+    "prerequisiteSoftware",
+    "prerequisiteLabs",
+    "hasCompleteSolution",
+    "solutionPath",
+    "steps",
+    "validationCriteria",
+    "expectedOutput",
+    "commonErrors",
+    "experimentalTasks"
+  ],
+  "properties": {
+    "labId": {
+      "type": "string",
+      "pattern": "^\\d{2}-[a-z-]+$",
+      "description": "Unique identifier within module (e.g., '01-hello-agent')"
+    },
+    "labNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "Sequential order within module"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 100,
+      "description": "Descriptive Spanish title"
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 30,
+      "maxLength": 300,
+      "description": "Single clear learning goal"
+    },
+    "estimatedTime": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 60,
+      "description": "Time in minutes"
+    },
+    "complexity": {
+      "type": "string",
+      "enum": ["simple", "standard", "complex", "capstone"],
+      "description": "Lab difficulty level"
+    },
+    "labType": {
+      "type": "string",
+      "enum": ["demo", "guided", "challenge"],
+      "description": "Type of lab exercise"
+    },
+    "prerequisiteSoftware": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required software installations"
+    },
+    "prerequisiteLabs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of labs that must be completed first"
+    },
+    "hasCompleteSolution": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true per spec requirement"
+    },
+    "solutionPath": {
+      "type": "string",
+      "pattern": "^docs/modulo-\\d{2}-.+/labs/\\d{2}-.+/$",
+      "description": "Path to complete C# project"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stepNumber", "title", "instructions"],
+        "properties": {
+          "stepNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 100
+          },
+          "instructions": {
+            "type": "string",
+            "minLength": 20
+          },
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "codeSnippet": {
+            "type": "string"
+          },
+          "expectedResult": {
+            "type": "string"
+          }
+        }
+      },
+      "minItems": 3,
+      "description": "Ordered array of execution steps"
+    },
+    "validationCriteria": {
+      "type": "string",
+      "minLength": 30,
+      "maxLength": 300,
+      "description": "How to verify successful completion"
+    },
+    "expectedOutput": {
+      "type": "string",
+      "minLength": 20,
+      "description": "What participants should see"
+    },
+    "commonErrors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symptom", "cause", "solution"],
+        "properties": {
+          "symptom": {
+            "type": "string",
+            "description": "What participant sees"
+          },
+          "cause": {
+            "type": "string",
+            "description": "Root cause explanation"
+          },
+          "solution": {
+            "type": "string",
+            "description": "Step-by-step fix"
+          },
+          "preventionTip": {
+            "type": "string",
+            "description": "How to avoid in future"
+          }
+        }
+      },
+      "minItems": 1,
+      "description": "Frequent mistakes and solutions"
+    },
+    "experimentalTasks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 20,
+        "maxLength": 200
+      },
+      "description": "Optional modifications for early finishers"
+    }
+  }
+}
