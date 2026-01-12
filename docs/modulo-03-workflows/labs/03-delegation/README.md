@@ -58,6 +58,7 @@ dotnet new console -n DelegationWorkflow -o .
 
 # Agregar paquetes necesarios para Handoff Orchestration
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.OpenAI --version 1.0.0-preview.260108.1
 dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
 dotnet add package Azure.AI.OpenAI --version 2.1.0
 dotnet add package Azure.Identity --version 1.14.0
