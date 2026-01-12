@@ -3,16 +3,16 @@
 // Descripción: Demostración de integración MCP con Microsoft Agent Framework
 // Módulo: 7
 // Lab: 01-mcp-integration
+// Usando el SDK oficial de Model Context Protocol
 // ============================================================================
 
-using System.Text.Json;
+using System.ComponentModel;
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
-using MCPIntegration;
+using ModelContextProtocol.Client;
 
 // ===== Configuración =====
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -33,125 +33,99 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:Endpoint");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:DeploymentName");
-var apiKey = configuration["AzureOpenAI:ApiKey"];
 
 Console.WriteLine("📋 Configuración:");
 Console.WriteLine($"   Endpoint: {endpoint}");
 Console.WriteLine($"   Deployment: {deploymentName}\n");
 
-// ===== Crear servidor MCP local para demostración =====
-Console.WriteLine("🔌 Iniciando servidor MCP local de demostración...");
-var mcpServer = new MCPWeatherServer();
+// ===== Conectar a servidor MCP usando el SDK oficial =====
+Console.WriteLine("🔌 Conectando a servidor MCP de Weather Service...");
+Console.WriteLine("   (Iniciando servidor MCP automáticamente)\n");
+
+// Crear cliente MCP que se conecta al servidor Weather
+await using var mcpClient = await McpClient.CreateAsync(new StdioClientTransport(new()
+{
+    Name = "WeatherMCPServer",
+    Command = "dotnet",
+    Arguments = ["run", "--project", "WeatherMCPServer"],
+    WorkingDirectory = Directory.GetCurrentDirectory()
+}));
 
 // Descubrir herramientas disponibles en el servidor MCP
-var mcpTools = mcpServer.ListTools();
-Console.WriteLine($"   ✅ Servidor MCP listo con {mcpTools.Tools.Count} herramientas:");
-foreach (var tool in mcpTools.Tools)
+Console.WriteLine("   ✅ Conectado al servidor MCP de Weather");
+var mcpTools = await mcpClient.ListToolsAsync().ConfigureAwait(false);
+Console.WriteLine($"   📋 {mcpTools.Count} herramientas disponibles:");
+foreach (var tool in mcpTools)
 {
     Console.WriteLine($"      • {tool.Name}: {tool.Description}");
 }
 
-// Descubrir recursos disponibles
-var mcpResources = mcpServer.ListResources();
-Console.WriteLine($"\n   📦 {mcpResources.Resources.Count} recursos disponibles:");
-foreach (var resource in mcpResources.Resources.Take(3))
-{
-    Console.WriteLine($"      • {resource.Uri}: {resource.Name}");
-}
-if (mcpResources.Resources.Count > 3)
-{
-    Console.WriteLine($"      • ... y {mcpResources.Resources.Count - 3} más");
-}
+// ===== Crear agente MAF con herramientas MCP =====
+Console.WriteLine("\n🤖 Creando agente MAF con herramientas MCP...");
+Console.WriteLine("   📌 Registrando herramientas MCP como AITool...");
 
-// ===== Construir el Kernel con Azure OpenAI =====
-Console.WriteLine("\n🔧 Configurando Semantic Kernel con Azure OpenAI...");
+// Convertir herramientas MCP a AITool para Microsoft Agent Framework
+var aiTools = new List<AITool>();
 
-var kernelBuilder = Kernel.CreateBuilder();
+foreach (var mcpTool in mcpTools)
+{
+    var toolName = mcpTool.Name;
+    var toolDescription = mcpTool.Description ?? "";
+    
+    // Crear la función que llama al servidor MCP
+    var mcpFunction = async (IReadOnlyDictionary<string, object?> arguments) =>
+    {
+        var args = arguments.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        var result = await mcpClient.CallToolAsync(toolName, args);
+        var textContent = result.Content.FirstOrDefault() as ModelContextProtocol.Protocol.TextContentBlock;
+        return textContent?.Text ?? "";
+    };
 
-// Agregar servicio de chat de Azure OpenAI
-if (!string.IsNullOrEmpty(apiKey))
-{
-    // Usar API Key si está disponible
-    kernelBuilder.AddAzureOpenAIChatCompletion(
-        deploymentName: deploymentName,
-        endpoint: endpoint,
-        apiKey: apiKey);
-}
-else
-{
-    // Usar DefaultAzureCredential para autenticación sin clave
-    kernelBuilder.AddAzureOpenAIChatCompletion(
-        deploymentName: deploymentName,
-        endpoint: endpoint,
-        credentials: new DefaultAzureCredential());
+    // Crear AIFunction
+    var aiFunction = AIFunctionFactory.Create(
+        method: mcpFunction,
+        name: toolName,
+        description: toolDescription);
+    
+    aiTools.Add(aiFunction);
 }
 
-var kernel = kernelBuilder.Build();
-Console.WriteLine("   ✅ Kernel configurado con Azure OpenAI");
+Console.WriteLine($"   ✅ Convertidas {aiTools.Count} herramientas MCP a AITool\n");
 
-// ===== Registrar herramientas nativas =====
-Console.WriteLine("\n🔧 Registrando herramientas nativas (function tools locales)...");
-var nativeFunctions = new NativeFunctions();
-kernel.Plugins.AddFromObject(nativeFunctions, "native");
-Console.WriteLine("   ✅ Herramientas nativas registradas: convert_temperature, get_datetime, calculate, get_capabilities");
+// ===== Crear Agente MAF con herramientas MCP =====
+AIAgent agent = new AzureOpenAIClient(
+    new Uri(endpoint),
+    new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient()
+    .CreateAIAgent(
+        name: "AgenteMCP",
+        instructions: """
+            Eres un asistente útil que tiene acceso a herramientas de clima a través de MCP.
+            
+            Puedes ayudar con:
+            • Obtener el clima actual de ciudades
+            • Obtener pronósticos del tiempo
+            • Convertir temperaturas entre Celsius y Fahrenheit
+            
+            Siempre responde en español de forma clara y concisa.
+            """,
+        tools: aiTools.ToArray()
+    );
 
-// ===== Registrar herramientas MCP como plugins =====
-Console.WriteLine("\n🔌 Registrando herramientas MCP en el kernel...");
-
-// Crear funciones wrapper para las herramientas MCP
-// En producción, MAF tiene MCPClient que hace esto automáticamente
-var mcpPlugin = new MCPToolsPlugin(mcpServer);
-kernel.Plugins.AddFromObject(mcpPlugin, "mcp");
-Console.WriteLine("   ✅ Herramientas MCP registradas: get_weather, get_forecast, get_headlines");
-
-// ===== Configurar el agente con todas las herramientas =====
-Console.WriteLine("\n🤖 Creando agente con herramientas híbridas (MCP + nativas)...");
-
-var chatService = kernel.GetRequiredService<IChatCompletionService>();
-
-// Instrucciones del agente en español
-var systemPrompt = """
-    Eres un asistente útil que puede proporcionar información sobre:
-    
-    📡 HERRAMIENTAS MCP (fuente externa):
-    - Clima actual en diferentes ciudades (get_weather)
-    - Pronóstico del tiempo (get_forecast)  
-    - Titulares de noticias (get_headlines)
-    
-    🔧 HERRAMIENTAS NATIVAS (locales):
-    - Conversión de temperatura Celsius/Fahrenheit (convert_temperature)
-    - Fecha y hora actual (get_datetime)
-    - Cálculos matemáticos (calculate)
-    - Lista de capacidades (get_capabilities)
-    
-    Siempre responde en español. Cuando necesites información sobre clima o noticias,
-    usa las herramientas MCP. Para conversiones y cálculos, usa las herramientas nativas.
-    
-    Explica brevemente qué tipo de herramienta usaste (MCP o nativa) cuando corresponda.
-    """;
-
-var chatHistory = new ChatHistory(systemPrompt);
-
-Console.WriteLine("   ✅ Agente listo con herramientas híbridas\n");
+// Crear thread para mantener el contexto de la conversación
+var thread = agent.GetNewThread();
 
 // ===== Demostración interactiva =====
 Console.WriteLine("═══════════════════════════════════════════════════════════════");
-Console.WriteLine("  💬 DEMOSTRACIÓN: Agente con herramientas MCP + Nativas");
+Console.WriteLine("  💬 DEMOSTRACIÓN: Agente MAF con herramientas MCP de Weather");
 Console.WriteLine("═══════════════════════════════════════════════════════════════");
 Console.WriteLine("  Ejemplos de preguntas:");
-Console.WriteLine("  • \"¿Qué clima hace en Madrid?\" (usa herramienta MCP)");
-Console.WriteLine("  • \"Convierte 25 grados Celsius a Fahrenheit\" (usa nativa)");
-Console.WriteLine("  • \"¿Qué hora es?\" (usa nativa)");
-Console.WriteLine("  • \"Dame el pronóstico de Barcelona para 5 días\" (usa MCP)");
-Console.WriteLine("  • \"¿Cuáles son las noticias de tecnología?\" (usa MCP)");
-Console.WriteLine("  • \"¿Qué capacidades tienes?\" (usa nativa)");
+Console.WriteLine("  • \"¿Qué clima hace en Madrid?\"");
+Console.WriteLine("  • \"Convierte 25 grados Celsius a Fahrenheit\"");
+Console.WriteLine("  • \"Dame el pronóstico de Barcelona para 5 días\"");
+Console.WriteLine("  • \"¿Qué temperatura hace en Sevilla en Fahrenheit?\"");
 Console.WriteLine("  • \"Escribe 'salir' para terminar\"\n");
-
-// Configuración para auto-ejecución de funciones
-var executionSettings = new AzureOpenAIPromptExecutionSettings
-{
-    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-};
 
 // Bucle de conversación
 while (true)
@@ -169,106 +143,41 @@ while (true)
         break;
     }
 
-    // Agregar mensaje del usuario al historial
-    chatHistory.AddUserMessage(userInput);
-
     try
     {
-        Console.Write("\n🤖 Agente: ");
+        Console.Write("\n🤖 AgenteMCP: ");
         
-        // Obtener respuesta del agente con ejecución automática de funciones
-        var response = await chatService.GetChatMessageContentAsync(
-            chatHistory,
-            executionSettings,
-            kernel);
-
-        Console.WriteLine(response.Content);
+        // Ejecutar el agente con las herramientas MCP
+        await foreach (var update in agent.RunStreamingAsync(userInput, thread))
+        {
+            Console.Write(update);
+        }
         
-        // Agregar respuesta al historial
-        chatHistory.AddAssistantMessage(response.Content ?? "");
-        
-        Console.WriteLine();
+        Console.WriteLine("\n");
     }
     catch (Exception ex)
     {
         Console.WriteLine($"\n⚠️ Error: {ex.Message}");
         Console.WriteLine("   Intenta con otra pregunta.\n");
+        
+        if (ex.InnerException != null)
+        {
+            Console.WriteLine($"   Detalles: {ex.InnerException.Message}\n");
+        }
     }
 }
-
-// ===== Demostración de lectura de recursos MCP =====
-Console.WriteLine("═══════════════════════════════════════════════════════════════");
-Console.WriteLine("  📦 BONUS: Lectura directa de recursos MCP");
-Console.WriteLine("═══════════════════════════════════════════════════════════════\n");
-
-Console.WriteLine("Leyendo recurso 'weather://madrid' directamente del servidor MCP:");
-var resourceData = mcpServer.ReadResource("weather://madrid");
-Console.WriteLine(resourceData.Contents[0].Text);
 
 Console.WriteLine("\n═══════════════════════════════════════════════════════════════");
 Console.WriteLine("  ✅ Lab completado: Integración MCP con MAF");
 Console.WriteLine("═══════════════════════════════════════════════════════════════\n");
 
 Console.WriteLine("📝 Resumen de lo aprendido:");
-Console.WriteLine("   1. Los servidores MCP exponen herramientas (tools) y recursos (resources)");
-Console.WriteLine("   2. MAF puede consumir herramientas MCP como plugins del kernel");
-Console.WriteLine("   3. Las herramientas MCP y nativas pueden coexistir en el mismo agente");
-Console.WriteLine("   4. El agente decide automáticamente qué herramienta usar según el contexto");
+Console.WriteLine("   1. Creaste un servidor MCP personalizado con herramientas de clima");
+Console.WriteLine("   2. MAF se conectó al servidor usando el SDK oficial de MCP");
+Console.WriteLine("   3. Las herramientas MCP se convirtieron automáticamente en AITool");
+Console.WriteLine("   4. El agente usó function calling para invocar las herramientas MCP");
 Console.WriteLine("   5. MCP permite interoperabilidad entre diferentes frameworks de IA\n");
-
-// ===== Clase helper para registrar herramientas MCP como plugins =====
-
-/// <summary>
-/// Plugin wrapper que expone las herramientas del servidor MCP como funciones del kernel.
-/// En producción, MAF proporciona MCPClient que hace esto automáticamente.
-/// </summary>
-public class MCPToolsPlugin
-{
-    private readonly MCPWeatherServer _mcpServer;
-
-    public MCPToolsPlugin(MCPWeatherServer mcpServer)
-    {
-        _mcpServer = mcpServer;
-    }
-
-    [Microsoft.SemanticKernel.KernelFunction("get_weather")]
-    [System.ComponentModel.Description("Obtiene el clima actual para una ciudad (herramienta MCP)")]
-    public string GetWeather(
-        [System.ComponentModel.Description("Nombre de la ciudad")] string city)
-    {
-        Console.WriteLine($"\n   📡 [MCP] Llamando get_weather(city=\"{city}\")");
-        
-        var args = JsonSerializer.SerializeToElement(new { city });
-        var result = _mcpServer.CallTool("get_weather", args);
-        
-        return result.Content.FirstOrDefault()?.Text ?? "Sin resultado";
-    }
-
-    [Microsoft.SemanticKernel.KernelFunction("get_forecast")]
-    [System.ComponentModel.Description("Obtiene el pronóstico del tiempo para varios días (herramienta MCP)")]
-    public string GetForecast(
-        [System.ComponentModel.Description("Nombre de la ciudad")] string city,
-        [System.ComponentModel.Description("Número de días (1-7)")] int days = 3)
-    {
-        Console.WriteLine($"\n   📡 [MCP] Llamando get_forecast(city=\"{city}\", days={days})");
-        
-        var args = JsonSerializer.SerializeToElement(new { city, days });
-        var result = _mcpServer.CallTool("get_forecast", args);
-        
-        return result.Content.FirstOrDefault()?.Text ?? "Sin resultado";
-    }
-
-    [Microsoft.SemanticKernel.KernelFunction("get_headlines")]
-    [System.ComponentModel.Description("Obtiene titulares de noticias recientes (herramienta MCP)")]
-    public string GetHeadlines(
-        [System.ComponentModel.Description("Categoría: Tecnología, Internacional, Economía, Negocios")] string? category = null,
-        [System.ComponentModel.Description("Número de titulares (1-10)")] int count = 4)
-    {
-        Console.WriteLine($"\n   📡 [MCP] Llamando get_headlines(category=\"{category ?? "todas"}\", count={count})");
-        
-        var args = JsonSerializer.SerializeToElement(new { category, count });
-        var result = _mcpServer.CallTool("get_headlines", args);
-        
-        return result.Content.FirstOrDefault()?.Text ?? "Sin resultado";
-    }
-}
+Console.WriteLine("🔗 Próximos pasos:");
+Console.WriteLine("   • Crea tus propios servidores MCP para tus APIs");
+Console.WriteLine("   • Explora servidores MCP públicos: @modelcontextprotocol/*");
+Console.WriteLine("   • Combina múltiples servidores MCP en un solo agente\n");

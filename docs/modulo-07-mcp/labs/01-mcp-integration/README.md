@@ -108,32 +108,33 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "tu-api-key-aqui"
 
 ```
 01-mcp-integration/
-├── MCPIntegration.csproj    # Proyecto con dependencias MCP
-├── Program.cs               # Punto de entrada y orquestación
-├── MCPWeatherServer.cs      # Servidor MCP simulado
-├── NativeFunctions.cs       # Herramientas nativas (function tools)
-├── appsettings.json         # Configuración
-└── README.md                # Este archivo
+├── MCPIntegration.csproj        # Proyecto cliente MCP
+├── Program.cs                   # Cliente que consume servidor MCP
+├── WeatherMCPServer/            # Servidor MCP independiente
+│   ├── WeatherMCPServer.csproj  # Proyecto del servidor
+│   ├── Program.cs               # Servidor MCP con SDK oficial
+│   └── README.md                # Documentación del servidor
+├── appsettings.json             # Configuración
+└── README.md                    # Este archivo
 ```
 
 ### 3.2 Componentes Clave
 
-**MCPWeatherServer.cs** - Simula un servidor MCP que expone:
-- `get_weather`: Clima actual de ciudades
-- `get_forecast`: Pronóstico del tiempo
-- `get_headlines`: Titulares de noticias
+**WeatherMCPServer/** - Servidor MCP real usando el SDK oficial:
+- Implementado con `Microsoft.Extensions.Hosting` y `ModelContextProtocol.Server`
+- Usa `StdioServerTransport` para comunicación stdin/stdout
+- Expone 3 herramientas MCP:
+  - `get_weather`: Clima actual de ciudades
+  - `get_forecast`: Pronóstico del tiempo
+  - `convert_temperature`: Conversión Celsius ↔ Fahrenheit
 
-**NativeFunctions.cs** - Herramientas locales del agente:
-- `convert_temperature`: Conversión Celsius ↔ Fahrenheit
-- `get_datetime`: Fecha y hora actual
-- `calculate`: Operaciones matemáticas básicas
-- `get_capabilities`: Lista de capacidades
-
-**Program.cs** - Orquesta todo:
-1. Inicia el servidor MCP local
-2. Configura el kernel con Azure OpenAI
-3. Registra herramientas MCP y nativas
-4. Ejecuta el bucle de conversación
+**Program.cs** (Cliente) - Orquesta todo:
+1. Configura Microsoft Agent Framework con Azure OpenAI
+2. Inicia el servidor MCP como subproceso usando `StdioClientTransport`
+3. Conecta al servidor y descubre herramientas disponibles
+4. Convierte herramientas MCP a AITool usando `AIFunctionFactory`
+5. Crea el agente MAF con las herramientas MCP registradas
+6. Ejecuta el bucle de conversación usando threads para mantener contexto
 
 ---
 
@@ -157,29 +158,18 @@ dotnet run
    Endpoint: https://tu-recurso.openai.azure.com/
    Deployment: gpt-5.2
 
-🔌 Iniciando servidor MCP local de demostración...
-   ✅ Servidor MCP listo con 3 herramientas:
-      • get_weather: Obtiene el clima actual para una ciudad específica
+🔌 Conectando a servidor MCP de Weather Service...
+   (Iniciando servidor MCP automáticamente)
+
+   ✅ Conectado al servidor MCP de Weather
+   📋 3 herramientas disponibles:
+      • convert_temperature: Convierte temperatura entre Celsius y Fahrenheit
       • get_forecast: Obtiene el pronóstico del clima para los próximos días
-      • get_headlines: Obtiene los titulares de noticias recientes
+      • get_weather: Obtiene el clima actual para una ciudad específica
 
-   📦 8 recursos disponibles:
-      • weather://madrid: Clima en Madrid
-      • weather://barcelona: Clima en Barcelona
-      • weather://sevilla: Clima en Sevilla
-      • ... y 5 más
-
-🔧 Configurando Semantic Kernel con Azure OpenAI...
-   ✅ Kernel configurado con Azure OpenAI
-
-🔧 Registrando herramientas nativas (function tools locales)...
-   ✅ Herramientas nativas registradas: convert_temperature, get_datetime, calculate, get_capabilities
-
-🔌 Registrando herramientas MCP en el kernel...
-   ✅ Herramientas MCP registradas: get_weather, get_forecast, get_headlines
-
-🤖 Creando agente con herramientas híbridas (MCP + nativas)...
-   ✅ Agente listo con herramientas híbridas
+🤖 Creando agente MAF con herramientas MCP...
+   📌 Registrando herramientas MCP en el kernel...
+   ✅ Agente configurado con herramientas MCP
 ```
 
 ---
@@ -196,11 +186,8 @@ Escribe las siguientes preguntas para ver cómo el agente usa herramientas MCP:
 
 **Respuesta Esperada** (el agente usa `get_weather` MCP):
 ```
-   📡 [MCP] Llamando get_weather(city="madrid")
-
 🤖 Agente: El clima actual en Madrid es soleado con una temperatura de 22°C 
-y una humedad del 45%. Esta información la obtuve usando la herramienta MCP 
-de clima.
+y una humedad del 45%.
 ```
 
 ```
@@ -209,66 +196,43 @@ de clima.
 
 **Respuesta Esperada** (el agente usa `get_forecast` MCP):
 ```
-   📡 [MCP] Llamando get_forecast(city="barcelona", days=5)
-
 🤖 Agente: Aquí está el pronóstico para Barcelona...
 ```
 
-### 5.2 Probar Herramientas Nativas
+### 5.2 Probar Conversión de Temperatura
 
 ```
 👤 Usuario: Convierte 25 grados Celsius a Fahrenheit
 ```
 
-**Respuesta Esperada** (el agente usa herramienta nativa):
+**Respuesta Esperada** (el agente usa herramienta MCP convert_temperature):
 ```
-🤖 Agente: 25°C equivale a 77°F. Esta conversión la realicé con mi 
-herramienta nativa de conversión de temperatura.
-```
-
-```
-👤 Usuario: ¿Qué hora es?
-```
-
-**Respuesta Esperada**:
-```
-🤖 Agente: La fecha y hora actual es...
+🤖 Agente: 25°C equivale a 77°F.
 ```
 
 ### 5.3 Probar Combinación de Herramientas
 
 ```
-👤 Usuario: ¿Qué clima hace en Bilbao y cuánto es eso en Fahrenheit?
+👤 Usuario: ¿Qué clima hace en Bilbao en Fahrenheit?
 ```
 
-**Respuesta Esperada** (el agente combina MCP + nativa):
+**Respuesta Esperada** (el agente usa dos llamadas MCP):
 ```
-   📡 [MCP] Llamando get_weather(city="bilbao")
-
-🤖 Agente: En Bilbao está lluvioso con 15°C (59°F) y 80% de humedad. 
-Usé la herramienta MCP para obtener el clima y la herramienta nativa 
-para la conversión de temperatura.
+🤖 Agente: En Bilbao está lluvioso con 15°C (59°F) y 80% de humedad.
 ```
 
 ### 5.4 Listar Capacidades
 
 ```
-👤 Usuario: ¿Qué capacidades tienes?
+👤 Usuario: ¿Qué puedes hacer?
 ```
 
 **Respuesta Esperada**:
 ```
-🤖 Agente: Tengo las siguientes capacidades...
-   
-   📡 HERRAMIENTAS MCP (desde servidor externo):
-      • get_weather - Clima actual de ciudades
-      • get_forecast - Pronóstico del tiempo
-      • get_headlines - Titulares de noticias
-
-   🔧 HERRAMIENTAS NATIVAS (locales):
-      • convert_temperature - Conversión C↔F
-      • get_datetime - Fecha y hora actual
-      • calculate - Operaciones matemáticas
+🤖 Agente: Puedo ayudarte con información del clima usando mis herramientas MCP:
+   • Obtener clima actual de ciudades
+   • Obtener pronóstico del tiempo para múltiples días
+   • Convertir temperaturas entre Celsius y Fahrenheit
 ```
 
 ### 5.5 Terminar la Demostración
@@ -313,7 +277,7 @@ Para participantes que terminan temprano:
 
 ### Tarea 1: Agregar una Nueva Ciudad
 
-Modifica `MCPWeatherServer.cs` para agregar una nueva ciudad al diccionario `CityWeather`:
+Modifica `WeatherMCPServer/Program.cs` para agregar una nueva ciudad al diccionario `CityWeather`:
 
 ```csharp
 ["tokyo"] = new("Tokio", "Despejado", 18, 60),
@@ -321,20 +285,19 @@ Modifica `MCPWeatherServer.cs` para agregar una nueva ciudad al diccionario `Cit
 
 Ejecuta de nuevo y pregunta por el clima en Tokio.
 
-### Tarea 2: Probar Noticias por Categoría
+### Tarea 2: Probar Pronósticos Extendidos
 
 ```
-👤 Usuario: ¿Cuáles son las noticias de tecnología?
-👤 Usuario: Dame 2 titulares de economía
+👤 Usuario: Dame el pronóstico de París para 7 días
 ```
 
 ### Tarea 3: Combinar Múltiples Herramientas
 
 ```
-👤 Usuario: ¿Qué clima hace en París, qué hora es allá, y hay noticias internacionales?
+👤 Usuario: ¿Qué clima hace en París en Fahrenheit?
 ```
 
-Observa cómo el agente orquesta múltiples herramientas.
+Observa cómo el agente orquesta dos llamadas MCP: primero `get_weather` para obtener la temperatura en Celsius, luego `convert_temperature` para convertir a Fahrenheit.
 
 ---
 
@@ -377,11 +340,11 @@ Observa cómo el agente orquesta múltiples herramientas.
 
 ### Error: "El agente no usa herramientas MCP"
 
-**Síntoma**: El agente responde sin llamar a herramientas.
+**Síntoma**: El agente responde sin llamar a herramientas MCP.
 
-**Causa**: La pregunta puede no ser lo suficientemente específica.
+**Causa**: La pregunta puede no ser lo suficientemente específica para que el modelo LLM determine que debe usar las herramientas disponibles.
 
-**Solución**: Reformula la pregunta de forma más directa:
+**Solución**: Reformula la pregunta de forma más directa y específica:
 - ❌ "¿Hace frío?" 
 - ✅ "¿Qué clima hace en Madrid?"
 
@@ -391,11 +354,11 @@ Observa cómo el agente orquesta múltiples herramientas.
 
 En este laboratorio aprendiste:
 
-1. ✅ **Estructura de un servidor MCP**: Expone herramientas (tools) y recursos (resources)
-2. ✅ **Integración MAF + MCP**: Registrar herramientas MCP como plugins del kernel
-3. ✅ **Herramientas híbridas**: Combinar MCP externas con function tools nativas
-4. ✅ **Selección automática**: El agente decide qué herramienta usar según contexto
-5. ✅ **Valor de MCP**: Interoperabilidad entre diferentes frameworks de IA
+1. ✅ **Servidor MCP real**: Creaste un servidor usando el SDK oficial de ModelContextProtocol
+2. ✅ **Integración MAF + MCP**: Convertiste herramientas MCP a AITool usando AIFunctionFactory
+3. ✅ **Herramientas MCP**: El servidor expone tres herramientas (get_weather, get_forecast, convert_temperature)
+4. ✅ **Selección automática**: El agente MAF decide qué herramienta usar según contexto mediante function calling
+5. ✅ **Valor de MCP**: Comprendiste cómo MCP permite interoperabilidad entre diferentes frameworks de IA sin usar Semantic Kernel
 
 ---
 

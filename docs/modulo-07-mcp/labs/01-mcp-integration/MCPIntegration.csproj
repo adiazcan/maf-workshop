@@ -7,24 +7,30 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Exclude WeatherMCPServer from this project -->
   <ItemGroup>
+    <Compile Remove="WeatherMCPServer/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Official MCP SDK for .NET -->
+    <PackageReference Include="ModelContextProtocol" Version="0.4.1-preview.1" />
+    
     <!-- Microsoft Agent Framework packages -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.260108.1" />
     
-    <!-- MCP Client support -->
-    <PackageReference Include="Microsoft.Agents.AI.MCP" Version="1.0.0-preview.260108.1" />
+    <!-- Azure OpenAI SDK -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
     
-    <!-- Azure OpenAI -->
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
+    <!-- Azure Identity para autenticación -->
+    <PackageReference Include="Azure.Identity" Version="1.13.0" />
     
     <!-- Configuration -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
     
-    <!-- Semantic Kernel (required for MCP tool integration) -->
-    <PackageReference Include="Microsoft.SemanticKernel" Version="2.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -86,26 +86,42 @@ Aplicación que **consume** resources y tools de MCP Servers.
 **Ejemplo**: Microsoft Agent Framework actuando como cliente MCP
 
 ```csharp
-using Microsoft.Agents.AI.MCP;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 
-// Conectar a MCP Server
-var mcpClient = new MCPClient("http://localhost:3000/mcp");
+// Conectar a MCP Server usando StdioClientTransport
+var mcpClient = await McpClient.CreateAsync(
+    new StdioClientTransport(new()
+    {
+        Command = "python",
+        Arguments = ["mcp_server.py"]
+    }));
 
 // Descubrir tools disponibles
-var tools = await mcpClient.DiscoverToolsAsync();
+var mcpTools = await mcpClient.ListToolsAsync();
 
-// Registrar tools en el agente
-foreach (var tool in tools)
+// Convertir herramientas MCP a AITool
+var aiTools = new List<AITool>();
+foreach (var mcpTool in mcpTools)
 {
-    kernel.Plugins.Add(tool.ToKernelFunction());
+    var mcpFunction = async (IReadOnlyDictionary<string, object?> args) =>
+    {
+        var result = await mcpClient.CallToolAsync(mcpTool.Name, args.ToDictionary());
+        return result.Content.FirstOrDefault()?.Text ?? "";
+    };
+    
+    aiTools.Add(AIFunctionFactory.Create(
+        method: mcpFunction,
+        name: mcpTool.Name,
+        description: mcpTool.Description));
 }
 
-// El agente ahora puede usar tools del MCP Server
-var agent = new ChatCompletionAgent()
-{
-    Kernel = kernel,
-    Instructions = "Puedes usar herramientas de clima MCP"
-};
+// Crear agente MAF con herramientas MCP
+var agent = chatClient.CreateAIAgent(
+    name: "AgenteMCP",
+    instructions: "Puedes usar herramientas de clima MCP",
+    tools: aiTools.ToArray());
 ```
 
 ---
@@ -195,32 +211,39 @@ MCP Server de "Gestión de Inventario"
 
 ### MAF como Cliente MCP
 
-Microsoft Agent Framework incluye soporte nativo para MCP:
+Microsoft Agent Framework incluye soporte nativo para MCP a través del SDK oficial:
 
 ```csharp
-using Microsoft.Agents.AI.MCP;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 
-// Opción 1: Conectar a MCP Server HTTP
-var mcpClient = new MCPClient(new Uri("https://api.example.com/mcp"));
+// Conectar a MCP Server usando transporte stdio
+var mcpClient = await McpClient.CreateAsync(
+    new StdioClientTransport(new()
+    {
+        Command = "dotnet",
+        Arguments = ["run", "--project", "MyMCPServer"]
+    }));
 
-// Opción 2: Conectar a MCP Server local (stdio)
-var mcpClient = MCPClient.CreateStdioClient("python", "mcp_server.py");
+// Descubrir y convertir herramientas
+var mcpTools = await mcpClient.ListToolsAsync();
+var aiTools = mcpTools.Select(tool => 
+    AIFunctionFactory.Create(
+        method: async (IReadOnlyDictionary<string, object?> args) =>
+        {
+            var result = await mcpClient.CallToolAsync(tool.Name, args.ToDictionary());
+            return result.Content.FirstOrDefault()?.Text ?? "";
+        },
+        name: tool.Name,
+        description: tool.Description ?? "")
+).ToArray();
 
-// Descubrir y registrar herramientas
-await mcpClient.ConnectAsync();
-var tools = await mcpClient.ListToolsAsync();
-
-foreach (var tool in tools)
-{
-    kernel.Plugins.Add(tool.AsKernelFunction());
-}
-
-// Ahora el agente puede usar las herramientas MCP
-var agent = new ChatCompletionAgent()
-{
-    Kernel = kernel,
-    Instructions = "Puedes usar herramientas MCP para acceder a datos externos"
-};
+// Crear agente con herramientas MCP
+var agent = chatClient.CreateAIAgent(
+    name: "AgenteMCP",
+    instructions: "Puedes usar herramientas MCP para acceder a datos externos",
+    tools: aiTools);
 ```
 
 ---
