@@ -85,8 +85,7 @@ docs/
 │   ├── README.md                    # Theory: Function tools, composition
 │   └── labs/
 │       ├── 01-custom-tool/          # C# project with custom function
-│       ├── 02-agent-as-tool/        # Composing agents
-│       └── 03-human-approval/       # Human-in-the-loop example
+│       └── 02-agent-as-tool/        # Composing agents
 ├── modulo-03-workflows/
 │   ├── README.md                    # Theory: Workflow types, Planner+Executor
 │   └── labs/

@@ -87,9 +87,9 @@
 
 ## Phase 4: User Story 2 - Module 2: Function Tools (Priority: P1)
 
-**Goal**: Participants learn to extend agent capabilities with function tools, composition, and human approval
+**Goal**: Participants learn to extend agent capabilities with function tools and agent composition
 
-**Independent Test**: Participant completes Module 2 and creates agent with custom function tool, demonstrates agent-as-tool, and implements human-in-the-loop approval
+**Independent Test**: Participant completes Module 2 and creates agent with custom function tool, demonstrates agent-as-tool
 
 ### Theory Documentation
 
@@ -114,19 +114,11 @@
 - [X] T040 [US2] Implement Program.cs demonstrating conversation where MainAgent automatically delegates math questions to CalculatorAgent
 - [X] T041 [US2] Write lab instructions with 6 steps: create specialized agent, create coordinator agent, register as tool, test delegation, validation (Spanish, 25 min duration)
 
-### Module 2: Lab 03-human-approval
-
-- [X] T042 [US2] Create lab folder `docs/modulo-02-function-tools/labs/03-human-approval/` with README.md
-- [X] T043 [US2] Create C# project `docs/modulo-02-function-tools/labs/03-human-approval/ApprovalWorkflow.csproj` targeting net10.0
-- [X] T044 [US2] Implement DeleteFileFunction.cs with KernelFunction that requires human approval before execution
-- [X] T045 [US2] Implement approval logic in Program.cs: pause execution, prompt user for confirmation, continue or abort based on response
-- [X] T046 [US2] Write lab instructions with 6 steps: implement sensitive function, add approval gate, test approval flow, test rejection flow, validation (Spanish, 20 min duration)
-
 ### Module 2: Instructor Guide
 
-- [X] T047 [US2] Create `docs/modulo-02-function-tools/instructor-guide.md` with timing for 3 labs (65 min total), checkpoint after each lab, success criteria
+- [X] T047 [US2] Create `docs/modulo-02-function-tools/instructor-guide.md` with timing for 2 labs (55 min total), checkpoint after each lab, success criteria
 
-**Checkpoint**: ✅ Module 2 complete - participant can create custom tools, compose agents, and implement human-in-the-loop patterns
+**Checkpoint**: ✅ Module 2 complete - participant can create custom tools and compose agents
 
 ---
 
@@ -444,7 +436,6 @@ Task T030: Create Lab 01 folder structure
   
 # After Lab 01 complete, Labs 02 and 03 folders can be created in parallel:
 Task T036: Create Lab 02 folder structure
-Task T042: Create Lab 03 folder structure
 ```
 
 ---
@@ -509,13 +500,13 @@ Given workshop requirements for progressive learning:
 
 ---
 
-## Total Task Count: 146 tasks
+## Total Task Count: 141 tasks
 
 **Breakdown by Phase**:
 - Phase 1 (Setup): 10 tasks
 - Phase 2 (Foundational): 8 tasks
 - Phase 3 (US1 - Module 1): 10 tasks
-- Phase 4 (US2 - Module 2): 20 tasks
+- Phase 4 (US2 - Module 2): 15 tasks
 - Phase 5 (US3 - Module 3): 30 tasks
 - Phase 6 (US4 - Module 4): 20 tasks
 - Phase 7 (US5 - Module 5): 14 tasks

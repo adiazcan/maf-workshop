@@ -1,6 +1,6 @@
 # Módulo 2: Function Tools y Composición de Agentes
 
-**Duración**: 75 minutos  
+**Duración**: 55 minutos  
 **Nivel**: Intermedio  
 **Prerequisitos**: Módulo 1 - Fundamentos
 
@@ -11,7 +11,6 @@ Al completar este módulo, serás capaz de:
 1. Definir y registrar function tools usando Microsoft Agent Framework
 2. Implementar function calling automático con `ChatCompletionAgent`
 3. Usar un agente como herramienta dentro de otro agente
-4. Implementar patrones de aprobación humana (human-in-the-loop)
 
 ## Contenido Teórico
 
@@ -164,35 +163,6 @@ var mainAgent = new ChatCompletionAgent(
 );
 ```
 
-### Human-in-the-Loop Approval
-
-Para acciones sensibles (eliminar datos, enviar emails, gastos), **pausar ejecución** para pedir confirmación humana:
-
-```csharp
-// Función con aprobación humana
-var deleteFileFunction = AIFunctionFactory.Create(
-    (string filePath) =>
-    {
-        // PAUSA: Pedir aprobación humana
-        Console.WriteLine($"⚠️ El agente quiere eliminar: {filePath}");
-        Console.Write("¿Aprobar? (s/n): ");
-        var approval = Console.ReadLine();
-        
-        if (approval?.ToLower() == "s")
-        {
-            // Simular eliminación
-            return $"✅ Archivo '{filePath}' eliminado exitosamente";
-        }
-        else
-        {
-            return "🚫 Acción cancelada por el usuario";
-        }
-    },
-    name: "delete_file",
-    description: "Elimina un archivo del sistema. REQUIERE aprobación del usuario."
-);
-```
-
 ## Labs Prácticos
 
 ### [Lab 01: Custom Function Tool](labs/01-custom-tool/)
@@ -217,26 +187,13 @@ Crea un agente principal que delega tareas matemáticas a un agente especializad
 - Creación de funciones desde agentes
 - Routing de tareas
 
----
-
-### [Lab 03: Human Approval](labs/03-human-approval/)
-**Duración**: 20 minutos
-
-Implementa un workflow donde el agente debe obtener aprobación humana antes de ejecutar acciones sensibles.
-
-**Habilidades**:
-- Implementar gates de aprobación
-- Manejo de flujos condicionales
-- Cancelación de operaciones
-
 ## Checkpoint de Validación
 
 **Módulo completo cuando**:
 - ✅ El agente llama automáticamente a la función de clima cuando se pregunta sobre el tiempo
 - ✅ El agente principal delega matemáticas al agente calculadora
-- ✅ El workflow de aprobación pausa y espera confirmación del usuario
 
-**Meta de éxito**: 85% de participantes completan los 3 labs
+**Meta de éxito**: 85% de participantes completan los 2 labs
 
 ## Troubleshooting Común
 

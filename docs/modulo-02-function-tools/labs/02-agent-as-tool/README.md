@@ -426,7 +426,7 @@ Usuario → AsistenteGeneral → (¿Es matemáticas?)
 
 ## Próximos Pasos
 
-Continúa con [Lab 03: Human Approval](../03-human-approval/) donde aprenderás a implementar aprobación humana para acciones sensibles.
+Continúa con el [Módulo 3: Workflows y Orquestación](../../modulo-03-workflows/) donde aprenderás a crear workflows secuenciales, paralelos y de delegación.
 
 ---
 

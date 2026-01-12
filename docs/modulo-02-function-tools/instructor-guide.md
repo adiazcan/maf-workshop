@@ -1,6 +1,6 @@
 # Guía del Instructor: Módulo 2 - Function Tools y Composición de Agentes
 
-**Tiempo Total**: 75 minutos (1 hora 15 minutos)  
+**Tiempo Total**: 55 minutos  
 **Nivel**: Intermedio  
 **Prerequisitos para Participantes**: Completar Módulo 1 (Fundamentos)
 
@@ -11,7 +11,6 @@
 Este módulo enseña a los participantes cómo extender las capacidades de los agentes mediante:
 1. **Function Tools**: Funciones de C# que los agentes pueden invocar automáticamente
 2. **Agent-as-Tool**: Usar agentes especializados como funciones de un coordinador
-3. **Human-in-the-Loop**: Patrones de aprobación humana para operaciones sensibles
 
 ---
 
@@ -19,13 +18,11 @@ Este módulo enseña a los participantes cómo extender las capacidades de los a
 
 | Tiempo | Actividad | Duración | Formato |
 |--------|-----------|----------|---------|
-| 0:00 | Introducción teórica | 15 min | Presentación |
-| 0:15 | Lab 01: Custom Function Tool | 20 min | Hands-on |
-| 0:35 | Checkpoint 1 | 5 min | Validación |
-| 0:40 | Lab 02: Agent-as-Tool | 25 min | Hands-on |
-| 1:05 | Checkpoint 2 | 5 min | Validación |
-| 1:10 | Lab 03: Human Approval | 20 min | Hands-on |
-| 1:30 | Checkpoint Final | 5 min | Validación |
+| 0:00 | Introducción teórica | 10 min | Presentación |
+| 0:10 | Lab 01: Custom Function Tool | 20 min | Hands-on |
+| 0:30 | Checkpoint 1 | 5 min | Validación |
+| 0:35 | Lab 02: Agent-as-Tool | 25 min | Hands-on |
+| 1:00 | Checkpoint Final | 5 min | Validación |
 
 **Nota**: Los tiempos incluyen margen para resolución de problemas.
 
@@ -42,9 +39,6 @@ dotnet build
 
 cd ../02-agent-as-tool
 dotnet build
-
-cd ../03-human-approval
-dotnet build
 ```
 
 ### Material a Tener Listo
@@ -53,7 +47,7 @@ dotnet build
 - [ ] README.md teórico abierto en el proyector
 - [ ] Terminales preparadas para demos en vivo
 - [ ] Azure OpenAI funcionando (verificar quota disponible)
-- [ ] Código de los 3 labs listo para copiar/pegar si es necesario
+- [ ] Código de los 2 labs listo para copiar/pegar si es necesario
 
 ### Decisiones de Demo
 
@@ -76,21 +70,16 @@ dotnet build
    - Function tools permiten conectar con APIs, bases de datos, servicios externos
    - El modelo **decide automáticamente** cuándo llamar funciones
 
-2. **Anatomía de una Function Tool** (5 min)
+2. **Anatomía de una Function Tool** (4 min)
    - `AIFunctionFactory.Create`: Convierte métodos en funciones para el agente
    - Parámetro `name`: Nombre que el modelo usará para llamar la función
    - Parámetro `description`: Explica AL MODELO qué hace la función
    - **Demostrar** el código de WeatherService.cs y Program.cs
 
-3. **Composición de Agentes** (4 min)
+3. **Composición de Agentes** (3 min)
    - Patrón: Un agente coordinador con agentes especialistas
    - Beneficios: Modularidad, especialización, reutilización
    - `AIFunctionFactory.Create` para convertir agentes en funciones
-
-4. **Human-in-the-Loop** (3 min)
-   - Cuándo usar: Operaciones destructivas, transacciones, comunicaciones
-   - Patrón: Pausar → Mostrar → Preguntar → Ejecutar o Cancelar
-   - Importancia para IA responsable
 
 ### Preguntas Frecuentes en Teoría
 
@@ -193,51 +182,14 @@ Crear un sistema donde el agente principal delega matemáticas a un agente espec
 
 ---
 
-## Lab 03: Human Approval (20 minutos)
-
-### Objetivo del Lab
-Implementar aprobación humana para operaciones sensibles.
-
-### Flujo del Lab
-
-1. **Setup y configuración** (3 min)
-
-2. **Implementar SensitiveOperations.cs** (10 min)
-   - Mostrar el patrón de aprobación
-   - Explicar la diferencia entre operaciones de lectura y escritura
-   - Énfasis en el flujo: Validar → Preguntar → Ejecutar/Cancelar
-
-3. **Implementar Program.cs** (4 min)
-
-4. **Ejecutar y validar** (3 min)
-   - Probar operación de lectura (list_files) - sin aprobación
-   - Probar operación sensible (delete_file) - con aprobación
-   - Probar APROBAR y RECHAZAR
-
-### Checkpoint Final: Validación (5 minutos)
-
-**Criterio de Éxito**: El sistema pide aprobación para operaciones sensibles.
-
-**Método de Validación**:
-1. Todos pidan: "Lista los archivos" → NO debe pedir aprobación
-2. Todos pidan: "Elimina /temporal/cache.tmp" → DEBE pedir aprobación
-3. La mitad aprueben (s), la otra mitad rechacen (n)
-4. Verificar que los que aprobaron ven "✅ eliminado"
-5. Verificar que los que rechazaron ven "🚫 cancelado"
-
-**Meta**: 85% de participantes completan Lab 03
-
----
-
 ## Ajustes de Ritmo
 
-### Si el Grupo Va Adelantado (+15 min de margen)
+### Si el Grupo Va Adelantado (+10 min de margen)
 
 **Opciones**:
 1. **Experimentos opcionales**: Cada lab tiene sección de experimentación
 2. **Discusión de casos reales**: 
    - "¿Qué funciones crearían para su trabajo?"
-   - "¿Qué operaciones requerirían aprobación en su empresa?"
 3. **Preview del Módulo 3**: Mostrar brevemente los patrones de workflow
 
 ### Si el Grupo Va Retrasado (-10 min o menos)
@@ -249,10 +201,6 @@ Implementar aprobación humana para operaciones sensibles.
 **Lab 02 atrasado**:
 - Simplificar: Solo mostrar el concepto, copiar código completo
 - Omitir experimentación
-
-**Lab 03 atrasado**:
-- Demo completa del instructor
-- Participantes ejecutan código pre-escrito solo para ver el flujo de aprobación
 
 ---
 
@@ -319,10 +267,6 @@ var function = AIFunctionFactory.Create(
    - No escribes lógica de routing
    - Defines funciones claras y dejas que el modelo elija
 
-3. **"Human-in-the-loop es IA responsable"**
-   - No todos los agentes deben ser autónomos
-   - Las operaciones críticas merecen supervisión humana
-
 ### Ejemplos del Mundo Real
 
 **Function Tools**:
@@ -334,11 +278,6 @@ var function = AIFunctionFactory.Create(
 - "Agente de ventas delega análisis financiero a agente especializado"
 - "Agente de soporte delega problemas técnicos a agente de ingeniería"
 
-**Human-in-the-Loop**:
-- "Agente de RH no puede despedir empleados sin aprobación"
-- "Agente financiero no puede autorizar pagos grandes solo"
-- "Agente de comunicaciones no puede enviar masivos sin revisión"
-
 ---
 
 ## Materiales de Respaldo
@@ -348,7 +287,6 @@ var function = AIFunctionFactory.Create(
 Todos los labs tienen código completo en:
 - `docs/modulo-02-function-tools/labs/01-custom-tool/`
 - `docs/modulo-02-function-tools/labs/02-agent-as-tool/`
-- `docs/modulo-02-function-tools/labs/03-human-approval/`
 
 ### Enlaces Útiles
 
@@ -367,8 +305,6 @@ Preguntas rápidas para verificar aprendizaje:
    → Usando `AIFunctionFactory.Create` con nombre y descripción
 2. "¿Cómo convertimos un agente en función?"
    → Creando una función que invoca al agente y registrándola con `AIFunctionFactory.Create`
-3. "¿Cuándo debemos usar Human-in-the-Loop?"
-   → Operaciones destructivas, transacciones, comunicaciones
 
 ### Transición al Módulo 3
 
@@ -382,9 +318,8 @@ Preguntas rápidas para verificar aprendizaje:
 |------------|------|-----------|
 | Lab 01 | 90% | 80% |
 | Lab 02 | 85% | 75% |
-| Lab 03 | 85% | 75% |
 
-**Éxito del módulo**: Al menos 80% de participantes completan los 3 labs.
+**Éxito del módulo**: Al menos 80% de participantes completan los 2 labs.
 
 ---
 

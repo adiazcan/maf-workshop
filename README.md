@@ -68,7 +68,7 @@ Aprende los conceptos básicos de Microsoft Agent Framework y crea tu primer age
 ---
 
 ### [Módulo 2: Function Tools y Composición](docs/modulo-02-function-tools/)
-**Duración**: 75 minutos | **Nivel**: Intermedio
+**Duración**: 55 minutos | **Nivel**: Intermedio
 
 Extiende las capacidades de tus agentes mediante function tools personalizadas y composición de agentes.
 
@@ -76,12 +76,10 @@ Extiende las capacidades de tus agentes mediante function tools personalizadas y
 - Definir y registrar function tools en C#
 - Function calling automático
 - Composición: usar agentes como herramientas
-- Patrones de aprobación humana (human-in-the-loop)
 
 **Labs**:
 - 01-custom-tool: Implementar una function tool personalizada
 - 02-agent-as-tool: Composición de agentes
-- 03-human-approval: Workflow con aprobación humana
 
 ---
 

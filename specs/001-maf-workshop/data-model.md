@@ -54,21 +54,19 @@ Represents one of the 7 thematic learning modules that compose the workshop.
   "description": "Aprende a extender las capacidades de los agentes mediante function tools personalizadas y composición de agentes.",
   "learningObjectives": [
     "Definir y registrar function tools en C#",
-    "Usar un agente como herramienta dentro de otro agente",
-    "Implementar aprobación humana (human-in-the-loop)"
+    "Usar un agente como herramienta dentro de otro agente"
   ],
   "prerequisites": ["modulo-01-fundamentos"],
-  "estimatedDuration": 75,
-  "theoryDuration": 15,
-  "labsDuration": 60,
+  "estimatedDuration": 55,
+  "theoryDuration": 10,
+  "labsDuration": 45,
   "checkpointCriteria": "85% de participantes ejecutan correctamente una function tool personalizada",
   "targetSuccessRate": 85,
   "contentPath": "docs/modulo-02-function-tools/",
   "hasTheoryDoc": true,
   "labs": [
     { "labId": "01-custom-tool", ... },
-    { "labId": "02-agent-as-tool", ... },
-    { "labId": "03-human-approval", ... }
+    { "labId": "02-agent-as-tool", ... }
   ],
   "keyTechnologies": ["KernelFunction", "Function Calling", "Agent Composition"]
 }
