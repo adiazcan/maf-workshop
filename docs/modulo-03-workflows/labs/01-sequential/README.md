@@ -2,37 +2,47 @@
 
 **Duración**: 20 minutos  
 **Nivel**: Intermedio  
-**Objetivo**: Implementar un pipeline de 3 agentes donde cada uno procesa el resultado del anterior
+**Objetivo**: Implementar un pipeline de 3 agentes usando Sequential Orchestration de MAF
 
 ## Descripción
 
-En este lab implementarás un workflow secuencial clásico usando el patrón **Research → Write → Review**:
+En este lab implementarás un workflow secuencial usando **`AgentWorkflowBuilder.BuildSequential()`** de Microsoft Agent Framework para el patrón clásico **Research → Write → Review**:
 
 1. **ResearchAgent**: Investiga un tema y recopila información clave
 2. **WritingAgent**: Transforma la investigación en un artículo estructurado
 3. **ReviewAgent**: Revisa, mejora y produce la versión final
 
-Este patrón es fundamental para procesos donde cada paso depende del resultado del anterior.
+Este patrón es fundamental para procesos donde cada paso depende del resultado del anterior. MAF proporciona una orquestación secuencial integrada que maneja automáticamente el paso de contexto entre agentes.
 
 ```mermaid
 graph LR
     A[Usuario] -->|Tema| B[ResearchAgent]
-    B -->|Datos| C[WritingAgent]
-    C -->|Borrador| D[ReviewAgent]
+    B -->|Historial| C[WritingAgent]
+    C -->|Historial| D[ReviewAgent]
     D -->|Artículo Final| E[Usuario]
 ```
 
 ## Prerequisitos
 
 - ✅ .NET 10 SDK instalado
-- ✅ Azure OpenAI configurado con modelo `gpt-5.2`
+- ✅ Azure OpenAI configurado con modelo `gpt-4o` o superior
+- ✅ Azure CLI instalado (`az login` ejecutado)
 - ✅ Completar Módulo 1: Hello Agent
+
+## Conceptos Clave de MAF
+
+| Componente | Descripción |
+|------------|-------------|
+| `ChatClientAgent` | Agente respaldado por un cliente de chat con instrucciones específicas |
+| `AgentWorkflowBuilder.BuildSequential()` | Construye un pipeline donde los agentes se ejecutan en orden |
+| `InProcessExecution.StreamAsync()` | Ejecuta el workflow con streaming en tiempo real |
+| `StreamingRun` | Proporciona ejecución con capacidades de streaming de eventos |
+| `AgentRunUpdateEvent` | Evento con fragmentos de respuesta de cada agente |
+| `WorkflowOutputEvent` | Evento con el resultado final de todos los mensajes |
 
 ## Pasos del Lab
 
 ### Paso 1: Crear el Proyecto
-
-Crea un nuevo proyecto de consola usando .NET CLI:
 
 ```bash
 # Crear carpeta del proyecto
@@ -41,315 +51,194 @@ cd docs/modulo-03-workflows/labs/01-sequential
 
 # Crear proyecto de consola
 dotnet new console -n SequentialWorkflow
-
-# Moverse a la carpeta del proyecto (si se creó subcarpeta)
-# O quedarte en el directorio actual si usaste el parámetro -o .
 ```
 
 ### Paso 2: Instalar Paquetes de Microsoft Agent Framework
 
-Instala los paquetes NuGet necesarios para trabajar con Microsoft Agent Framework:
-
 ```bash
-# Paquete principal de Microsoft Agent Framework
+# Paquetes de Microsoft Agent Framework
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.OpenAI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
 
-# Abstracciones de MAF
-dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
+# Azure OpenAI SDK
+dotnet add package Azure.AI.OpenAI --version 2.1.0
 
-# Configuración de .NET
+# Azure Identity para autenticación
+dotnet add package Azure.Identity --version 1.13.0
+
+# Configuración
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
 ```
 
 **¿Qué instalan estos paquetes?**
-- `Microsoft.Agents.AI`: API principal de MAF incluyendo `ChatCompletionAgent`
-- `Microsoft.Agents.AI.Abstractions`: Interfaces y tipos base para agentes
-- `Microsoft.Extensions.Configuration.*`: Sistema de configuración de .NET
+- `Microsoft.Agents.AI`: API principal de MAF
+- `Microsoft.Agents.AI.OpenAI`: Extensiones para Azure OpenAI
+- `Microsoft.Agents.AI.Workflows`: Orquestación de workflows (`AgentWorkflowBuilder`, `ChatClientAgent`)
+- `Azure.AI.OpenAI`: SDK oficial de Azure OpenAI
+- `Azure.Identity`: Autenticación con `DefaultAzureCredential`
 
 ### Paso 3: Crear Archivo de Configuración
 
-Crea el archivo `appsettings.json` con la configuración de Azure OpenAI:
+Crea el archivo `appsettings.json`:
 
 ```json
 {
   "AzureOpenAI": {
     "Endpoint": "https://TU-RECURSO.openai.azure.com/",
-    "DeploymentName": "gpt-5.2"
+    "DeploymentName": "gpt-4o"
   }
 }
 ```
 
 **Importante**: Reemplaza `TU-RECURSO` con el nombre de tu recurso de Azure OpenAI.
 
-### Paso 4: Configurar API Key con User Secrets
+### Paso 4: Configurar Autenticación con Azure CLI
 
-Usa User Secrets para almacenar tu API Key de forma segura (nunca en el código):
+Este lab usa `DefaultAzureCredential` que automáticamente usa tu sesión de Azure CLI:
 
 ```bash
-# Inicializar user secrets para el proyecto
-dotnet user-secrets init
+# Iniciar sesión en Azure
+az login
 
-# Configurar la API key de Azure OpenAI
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
+# Verificar que estás en la suscripción correcta
+az account show
 ```
-
-**¿Por qué usar User Secrets?**
-- La API Key nunca se guarda en archivos del proyecto
-- No se sube accidentalmente a control de versiones
-- Cada desarrollador puede tener su propia key
 
 ### Paso 5: Implementar el Workflow Secuencial
 
-Reemplaza el contenido de `Program.cs` con el siguiente código que implementa el workflow de 3 agentes usando **Microsoft Agent Framework**:
+Reemplaza el contenido de `Program.cs` con el siguiente código que implementa Sequential Orchestration:
 
 ```csharp
 // =============================================================================
 // Program.cs - Workflow Secuencial con Microsoft Agent Framework
 // =============================================================================
-// Descripción: Pipeline de 3 pasos donde cada agente procesa el resultado
-// del agente anterior: ResearchAgent → WritingAgent → ReviewAgent
-//
 // Conceptos de MAF demostrados:
-// - ChatCompletionAgent: Agente que usa modelos de chat para completar tareas
-// - ChatHistory: Historial de conversación para cada agente
-// - InvokeAsync: Invocación asíncrona con streaming de respuestas
+// - ChatClientAgent: Agente respaldado por cliente de chat con instrucciones
+// - AgentWorkflowBuilder.BuildSequential(): Crea pipeline de agentes
+// - StreamingRun: Ejecución en tiempo real con streaming de eventos
+// - WorkflowEvent: Eventos para monitorear progreso del workflow
 // =============================================================================
 
-using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Chat;
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
-// =============================================================================
-// CONFIGURACIÓN
-// =============================================================================
-
-// Cargar configuración desde appsettings.json y user secrets
+// PASO 1: Configuración
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: false)
     .AddUserSecrets<Program>()
     .Build();
 
-// Obtener configuración de Azure OpenAI
 var endpoint = configuration["AzureOpenAI:Endpoint"] 
-    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:Endpoint");
+    ?? throw new InvalidOperationException("Falta: AzureOpenAI:Endpoint");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
-    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:DeploymentName");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:ApiKey. Use 'dotnet user-secrets set AzureOpenAI:ApiKey TU-API-KEY'");
+    ?? throw new InvalidOperationException("Falta: AzureOpenAI:DeploymentName");
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("         WORKFLOW SECUENCIAL: Research → Write → Review");
 Console.WriteLine("           Usando Microsoft Agent Framework (MAF)");
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine();
+Console.WriteLine("═══════════════════════════════════════════════════════════════════\n");
 
-// =============================================================================
-// CREAR AGENTES CON MICROSOFT AGENT FRAMEWORK
-// =============================================================================
-// ChatCompletionAgent es el tipo principal de agente en MAF.
-// Cada agente tiene:
-// - name: Identificador único del agente
-// - instructions: Prompt del sistema que define su comportamiento
-// - endpoint: URL del servicio Azure OpenAI
-// - modelId: Nombre del deployment del modelo
-// - apiKey: Clave de API para autenticación
-// =============================================================================
+// PASO 2: Crear cliente de Azure OpenAI
+// Se convierte a IChatClient usando AsIChatClient() para compatibilidad con workflows
+var client = new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
-// Agente 1: Investigador - Recopila información sobre un tema
-var researchAgent = new ChatCompletionAgent(
-    name: "ResearchAgent",
-    instructions: """
-        Eres un investigador experto. Tu trabajo es:
-        1. Analizar el tema solicitado
-        2. Identificar 3-5 puntos clave importantes
-        3. Proporcionar datos concretos y ejemplos relevantes
-        4. Mantener un formato estructurado con viñetas
-        
-        Responde en español, de forma concisa pero informativa.
-        Enfócate en información práctica y actualizada.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
-);
+Console.WriteLine("✓ Cliente Azure OpenAI configurado\n");
 
-Console.WriteLine("✓ ResearchAgent creado - Especialista en investigación");
+// PASO 3: Crear agentes con ChatClientAgent
+// Cada agente recibe el historial completo y agrega su respuesta
 
-// Agente 2: Escritor - Transforma la investigación en un artículo
-var writingAgent = new ChatCompletionAgent(
-    name: "WritingAgent",
-    instructions: """
-        Eres un escritor profesional de contenido técnico. Tu trabajo es:
-        1. Tomar la información de investigación proporcionada
-        2. Transformarla en un artículo bien estructurado
-        3. Agregar una introducción atractiva y conclusión clara
-        4. Usar un tono profesional pero accesible
-        5. Incluir títulos y subtítulos apropiados
-        
-        Responde en español. El artículo debe tener:
-        - Introducción (1 párrafo)
-        - Cuerpo (2-3 secciones con subtítulos)
-        - Conclusión (1 párrafo)
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
-);
+var researchAgent = new ChatClientAgent(client, """
+    Eres un investigador experto. Tu trabajo es:
+    1. Analizar el tema solicitado por el usuario
+    2. Identificar 3-5 puntos clave importantes
+    3. Proporcionar datos concretos y ejemplos relevantes
+    
+    Responde en español, de forma concisa pero informativa.
+    """, "ResearchAgent");
 
-Console.WriteLine("✓ WritingAgent creado - Especialista en redacción");
+var writingAgent = new ChatClientAgent(client, """
+    Eres un escritor profesional. Tu trabajo es:
+    1. Tomar la información del mensaje anterior (investigación)
+    2. Transformarla en un artículo bien estructurado
+    3. Incluir introducción, cuerpo y conclusión
+    
+    Responde en español con tono profesional.
+    """, "WritingAgent");
 
-// Agente 3: Revisor - Mejora y valida el artículo final
-var reviewAgent = new ChatCompletionAgent(
-    name: "ReviewAgent",
-    instructions: """
-        Eres un editor profesional con experiencia en contenido técnico. Tu trabajo es:
-        1. Revisar el artículo proporcionado
-        2. Mejorar claridad y fluidez de lectura
-        3. Corregir errores gramaticales o de estilo
-        4. Agregar sugerencias de mejora al final
-        5. Proporcionar la versión final pulida
-        
-        Responde en español. Proporciona:
-        - El artículo final mejorado
-        - Un breve resumen de cambios realizados (máximo 3 puntos)
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
-);
+var reviewAgent = new ChatClientAgent(client, """
+    Eres un editor profesional. Tu trabajo es:
+    1. Revisar el artículo proporcionado en el mensaje anterior
+    2. Mejorar claridad y corregir errores
+    3. Proporcionar la versión final pulida
+    
+    Responde en español con un breve resumen de cambios.
+    """, "ReviewAgent");
 
-Console.WriteLine("✓ ReviewAgent creado - Especialista en edición");
-Console.WriteLine();
+Console.WriteLine("✓ Agentes creados: ResearchAgent, WritingAgent, ReviewAgent\n");
 
-// =============================================================================
-// DEFINIR TEMA A PROCESAR
-// =============================================================================
+// PASO 4: Construir workflow secuencial con AgentWorkflowBuilder
+// BuildSequential() crea un pipeline donde cada agente procesa en orden
+var workflow = AgentWorkflowBuilder.BuildSequential([researchAgent, writingAgent, reviewAgent]);
 
-var topic = "El impacto de la inteligencia artificial generativa en el desarrollo de software moderno";
+Console.WriteLine("✓ Workflow secuencial construido\n");
 
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine($"TEMA: {topic}");
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine();
+// PASO 5: Ejecutar workflow con streaming
+var topic = "El impacto de la inteligencia artificial generativa en el desarrollo de software";
 
-// =============================================================================
-// EJECUTAR WORKFLOW SECUENCIAL
-// =============================================================================
-// En MAF, cada agente se invoca con InvokeAsync() pasando un ChatHistory.
-// El workflow secuencial pasa el resultado de un agente al siguiente
-// incluyéndolo en el prompt del siguiente ChatHistory.
-// =============================================================================
+Console.WriteLine($"TEMA: {topic}\n");
+Console.WriteLine("─────────────────────────────────────────────────────────────────\n");
 
-// --- PASO 1: Research ---
-Console.WriteLine("┌─────────────────────────────────────────────────────────────────┐");
-Console.WriteLine("│ PASO 1/3: ResearchAgent - Investigando tema...                  │");
-Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
+var messages = new List<ChatMessage> 
+{ 
+    new(ChatRole.User, $"Investiga y crea un artículo sobre: {topic}") 
+};
 
-// ChatHistory almacena la conversación con el agente
-var researchChat = new ChatHistory();
-researchChat.AddUserMessage($"Investiga el siguiente tema: {topic}");
+// InProcessExecution.StreamAsync() ejecuta el workflow y retorna StreamingRun
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
 
-// InvokeAsync retorna un IAsyncEnumerable para streaming de respuestas
-string researchResult = "";
-await foreach (var message in researchAgent.InvokeAsync(researchChat))
+string currentAgent = "";
+List<ChatMessage> finalResult = [];
+
+// Procesar eventos del workflow en tiempo real
+await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
 {
-    researchResult += message.Content;
+    if (evt is AgentRunUpdateEvent agentEvent)
+    {
+        if (agentEvent.ExecutorId != currentAgent)
+        {
+            currentAgent = agentEvent.ExecutorId;
+            Console.WriteLine($"\n🤖 {currentAgent}:\n");
+        }
+        Console.Write(agentEvent.Data);  // Streaming de respuesta
+    }
+    else if (evt is WorkflowOutputEvent outputEvt)
+    {
+        finalResult = (List<ChatMessage>)outputEvt.Data!;
+        break;
+    }
 }
 
-Console.WriteLine();
-Console.WriteLine("📊 RESULTADO DE INVESTIGACIÓN:");
-Console.WriteLine("─────────────────────────────────────────────────────────────────");
-Console.WriteLine(researchResult);
-Console.WriteLine();
-
-// --- PASO 2: Writing ---
-Console.WriteLine("┌─────────────────────────────────────────────────────────────────┐");
-Console.WriteLine("│ PASO 2/3: WritingAgent - Escribiendo artículo...                │");
-Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
-
-// Nuevo ChatHistory para el escritor, pasando el resultado anterior en el prompt
-var writingChat = new ChatHistory();
-writingChat.AddUserMessage($"""
-    Basándote en la siguiente investigación, escribe un artículo completo:
-    
-    --- INVESTIGACIÓN ---
-    {researchResult}
-    --- FIN INVESTIGACIÓN ---
-    
-    Escribe el artículo ahora.
-    """);
-
-string writingResult = "";
-await foreach (var message in writingAgent.InvokeAsync(writingChat))
-{
-    writingResult += message.Content;
-}
-
-Console.WriteLine();
-Console.WriteLine("📝 BORRADOR DEL ARTÍCULO:");
-Console.WriteLine("─────────────────────────────────────────────────────────────────");
-Console.WriteLine(writingResult);
-Console.WriteLine();
-
-// --- PASO 3: Review ---
-Console.WriteLine("┌─────────────────────────────────────────────────────────────────┐");
-Console.WriteLine("│ PASO 3/3: ReviewAgent - Revisando y mejorando...                │");
-Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
-
-// Nuevo ChatHistory para el revisor, pasando el artículo en el prompt
-var reviewChat = new ChatHistory();
-reviewChat.AddUserMessage($"""
-    Revisa y mejora el siguiente artículo:
-    
-    --- ARTÍCULO ---
-    {writingResult}
-    --- FIN ARTÍCULO ---
-    
-    Proporciona la versión final mejorada y un resumen de cambios.
-    """);
-
-string reviewResult = "";
-await foreach (var message in reviewAgent.InvokeAsync(reviewChat))
-{
-    reviewResult += message.Content;
-}
-
-Console.WriteLine();
-Console.WriteLine("✅ ARTÍCULO FINAL (REVISADO):");
-Console.WriteLine("─────────────────────────────────────────────────────────────────");
-Console.WriteLine(reviewResult);
-Console.WriteLine();
-
-// =============================================================================
-// RESUMEN DEL WORKFLOW
-// =============================================================================
-
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("\n\n═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("                    WORKFLOW COMPLETADO");
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine();
-Console.WriteLine("📋 Resumen de ejecución:");
-Console.WriteLine($"   • Paso 1 (Research): {researchResult.Length} caracteres generados");
-Console.WriteLine($"   • Paso 2 (Writing):  {writingResult.Length} caracteres generados");
-Console.WriteLine($"   • Paso 3 (Review):   {reviewResult.Length} caracteres generados");
-Console.WriteLine();
-Console.WriteLine("✓ El workflow secuencial ejecutó los 3 pasos en orden correcto");
-Console.WriteLine("✓ Cada agente recibió el output del agente anterior como input");
-Console.WriteLine();
+Console.WriteLine("═══════════════════════════════════════════════════════════════════\n");
+
+Console.WriteLine($"📋 Mensajes procesados: {finalResult.Count}");
+Console.WriteLine($"   • Usuario: {finalResult.Count(m => m.Role == ChatRole.User)}");
+Console.WriteLine($"   • Agentes: {finalResult.Count(m => m.Role == ChatRole.Assistant)}\n");
+
+Console.WriteLine("✓ Cada agente recibió el historial completo de la conversación");
+Console.WriteLine("✓ El output fluyó de un agente al siguiente en el pipeline\n");
 ```
-
-**Explicación del Código MAF**:
-
-| Componente | Descripción |
-|------------|-------------|
-| `ChatCompletionAgent` | Tipo principal de agente en MAF para tareas de chat |
-| `instructions` | Prompt del sistema que define el comportamiento del agente |
-| `ChatHistory` | Contenedor del historial de conversación |
-| `AddUserMessage()` | Agrega un mensaje del usuario al historial |
-| `InvokeAsync()` | Invoca al agente de forma asíncrona con streaming |
 
 ### Paso 6: Ejecutar el Workflow
 
@@ -362,47 +251,37 @@ dotnet run
 ```
 ═══════════════════════════════════════════════════════════════════
          WORKFLOW SECUENCIAL: Research → Write → Review
+           Usando Microsoft Agent Framework (MAF)
 ═══════════════════════════════════════════════════════════════════
 
-✓ ResearchAgent creado - Especialista en investigación
-✓ WritingAgent creado - Especialista en redacción
-✓ ReviewAgent creado - Especialista en edición
+✓ Cliente Azure OpenAI configurado
 
-┌─────────────────────────────────────────────────────────────────┐
-│ PASO 1/3: ResearchAgent - Investigando tema...                  │
-└─────────────────────────────────────────────────────────────────┘
+✓ Agentes creados: ResearchAgent, WritingAgent, ReviewAgent
 
-📊 RESULTADO DE INVESTIGACIÓN:
+✓ Workflow secuencial construido
+
+TEMA: El impacto de la inteligencia artificial generativa...
 ─────────────────────────────────────────────────────────────────
-[Información estructurada con viñetas sobre IA generativa...]
 
-┌─────────────────────────────────────────────────────────────────┐
-│ PASO 2/3: WritingAgent - Escribiendo artículo...                │
-└─────────────────────────────────────────────────────────────────┘
+🤖 ResearchAgent:
+[Información estructurada sobre IA generativa...]
 
-📝 BORRADOR DEL ARTÍCULO:
-─────────────────────────────────────────────────────────────────
+🤖 WritingAgent:
 [Artículo con introducción, cuerpo y conclusión...]
 
-┌─────────────────────────────────────────────────────────────────┐
-│ PASO 3/3: ReviewAgent - Revisando y mejorando...                │
-└─────────────────────────────────────────────────────────────────┘
-
-✅ ARTÍCULO FINAL (REVISADO):
-─────────────────────────────────────────────────────────────────
+🤖 ReviewAgent:
 [Versión final pulida + resumen de cambios...]
 
 ═══════════════════════════════════════════════════════════════════
                     WORKFLOW COMPLETADO
 ═══════════════════════════════════════════════════════════════════
 
-📋 Resumen de ejecución:
-   • Paso 1 (Research): 1234 caracteres generados
-   • Paso 2 (Writing):  2345 caracteres generados
-   • Paso 3 (Review):   2567 caracteres generados
+📋 Mensajes procesados: 4
+   • Usuario: 1
+   • Agentes: 3
 
-✓ El workflow secuencial ejecutó los 3 pasos en orden correcto
-✓ Cada agente recibió el output del agente anterior como input
+✓ Cada agente recibió el historial completo de la conversación
+✓ El output fluyó de un agente al siguiente en el pipeline
 ```
 
 ### Paso 7: Validar Resultados
@@ -410,52 +289,59 @@ dotnet run
 Verifica que:
 
 1. ✅ Los 3 agentes se ejecutaron en orden: Research → Write → Review
-2. ✅ El artículo final contiene información de la investigación
-3. ✅ El ReviewAgent identificó mejoras realizadas
-4. ✅ El output muestra la cadena de procesamiento completa
+2. ✅ Cada agente mostró su nombre antes de responder (streaming)
+3. ✅ El artículo final contiene información de la investigación
+4. ✅ El conteo final muestra 4 mensajes (1 usuario + 3 agentes)
 
 ## Checkpoint de Validación
 
-**Criterio de éxito**: El workflow secuencial ejecuta 3 pasos en orden, con cada agente procesando el resultado del anterior.
+**Criterio de éxito**: El workflow secuencial ejecuta 3 pasos usando `AgentWorkflowBuilder.BuildSequential()`.
 
 **Validación del instructor**:
-- [ ] Los 3 pasos se muestran en orden en la consola
-- [ ] El artículo final menciona datos de la investigación
-- [ ] El resumen muestra caracteres generados en cada paso
+- [ ] Los 3 agentes se identifican en la consola (ResearchAgent, WritingAgent, ReviewAgent)
+- [ ] El streaming muestra respuestas progresivas
+- [ ] El resultado final incluye todos los mensajes del historial
 
 ## Troubleshooting
 
-### "El resultado del paso anterior no se pasa correctamente"
+### "DefaultAzureCredential authentication failed"
 
-**Causa**: La variable del resultado anterior no se incluye en el prompt del siguiente agente.
+**Causa**: No hay sesión activa de Azure CLI.
 
-**Solución**: Asegura que el mensaje incluye el texto completo del paso anterior:
-```csharp
-writingChat.AddUserMessage($"Basándote en: {researchResult}");
+**Solución**: 
+```bash
+az login
 ```
 
-### "Los agentes no mantienen contexto entre sí"
+### "ChatClientAgent no existe"
 
-**Causa**: Cada agente tiene su propio ChatHistory, esto es intencional.
+**Causa**: Falta el paquete `Microsoft.Agents.AI.Workflows`.
 
-**Explicación**: En un workflow secuencial, cada agente es independiente. El contexto se pasa explícitamente a través del prompt, no a través de historial compartido. Esto permite:
-- Instrucciones especializadas por agente
-- Control preciso de qué información pasa entre pasos
-- Aislamiento de errores
+**Solución**: 
+```bash
+dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
+```
 
-### "El proceso tarda mucho tiempo"
+### "El streaming no muestra nada"
 
-**Causa**: Los 3 agentes se ejecutan secuencialmente, cada uno haciendo una llamada a Azure OpenAI.
+**Causa**: Posible problema con el modelo o deployment.
 
-**Solución**: Esto es comportamiento esperado. En el Lab 02 aprenderás workflows paralelos para casos donde los agentes pueden ejecutarse simultáneamente.
+**Solución**: Verifica que el deployment existe y está disponible en Azure OpenAI.
+
+## Diferencias con Implementación Manual
+
+| Aspecto | Manual | Con AgentWorkflowBuilder |
+|---------|--------|-------------------------|
+| Paso de contexto | Explícito en cada prompt | Automático (historial compartido) |
+| Manejo de errores | Manual en cada paso | Integrado en el framework |
+| Streaming | Implementación propia | `WatchStreamAsync()` integrado |
+| Escalabilidad | Código duplicado | Agregar agentes al array |
 
 ## Experimentos Opcionales
 
-Si terminas antes, intenta:
-
-1. **Cambiar el tema**: Modifica la variable `topic` para investigar otro tema
-2. **Agregar un cuarto paso**: Crea un `TranslatorAgent` que traduzca el artículo final al inglés
-3. **Modificar instrucciones**: Ajusta las instrucciones del `WritingAgent` para generar un formato diferente (por ejemplo, lista de tips en lugar de artículo)
+1. **Agregar un cuarto agente**: Crea un `TranslatorAgent` y agrégalo al array
+2. **Cambiar el orden**: Pon ReviewAgent antes de WritingAgent y observa el resultado
+3. **Custom Executor**: Implementa un ejecutor personalizado que no use LLM
 
 ## Siguiente Lab
 

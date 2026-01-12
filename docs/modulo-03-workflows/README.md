@@ -8,27 +8,30 @@
 
 Al completar este módulo, serás capaz de:
 
-1. Implementar workflows secuenciales, paralelos y de delegación
-2. Configurar y usar AgentGroupChat para colaboración multi-agente
-3. Persistir estado de workflows con Azure AI Agent Service
-4. Diseñar estrategias de terminación para conversaciones multi-agente
+1. Implementar workflows secuenciales, paralelos y de delegación usando MAF
+2. Usar `AgentWorkflowBuilder` para orquestar pipelines de agentes
+3. Configurar AgentGroupChat para colaboración multi-agente
+4. Persistir estado de workflows con Azure AI Agent Service
+5. Diseñar estrategias de terminación para conversaciones multi-agente
 
 ## Contenido Teórico
 
-### Tipos de Workflows
+### Tipos de Workflows en MAF
 
-#### 1. Workflow Secuencial
+Microsoft Agent Framework proporciona orquestaciones integradas para diferentes patrones de workflows:
 
-Agentes ejecutan tareas **en orden**, pasando resultados de uno al siguiente.
+#### 1. Workflow Secuencial (`AgentWorkflowBuilder.BuildSequential()`)
+
+Agentes ejecutan tareas **en orden**, cada uno recibe el historial completo de la conversación.
 
 ```mermaid
 graph LR
-    A[ResearchAgent] -->|Datos| B[WritingAgent]
-    B -->|Borrador| C[ReviewAgent]
+    A[ResearchAgent] -->|Historial| B[WritingAgent]
+    B -->|Historial| C[ReviewAgent]
     C -->|Documento Final| D[Usuario]
 ```
 
-**Casos de uso**: Pipelines de procesamiento, tareas con dependencias
+**Casos de uso**: Pipelines de procesamiento, tareas con dependencias, revisiones en cadena
 
 ---
 
@@ -91,20 +94,50 @@ graph TD
 
 ---
 
-### Implementación de Workflows
+### Implementación de Workflows con MAF
 
-#### Workflow Secuencial
+#### Workflow Secuencial con AgentWorkflowBuilder
 
 ```csharp
-// Paso 1: Research
-var researchResult = await researchAgent.InvokeAsync("Investigar tendencias de IA");
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
 
-// Paso 2: Write (usa resultado del paso 1)
-var draftResult = await writingAgent.InvokeAsync($"Escribir artículo basado en: {researchResult.Content}");
+// Crear cliente de Azure OpenAI
+var client = new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
-// Paso 3: Review (usa resultado del paso 2)
-var finalResult = await reviewAgent.InvokeAsync($"Revisar y mejorar: {draftResult.Content}");
+// Crear agentes con ChatClientAgent
+var researchAgent = new ChatClientAgent(client, "Eres un investigador...", "ResearchAgent");
+var writingAgent = new ChatClientAgent(client, "Eres un escritor...", "WritingAgent");
+var reviewAgent = new ChatClientAgent(client, "Eres un editor...", "ReviewAgent");
+
+// Construir workflow secuencial
+var workflow = AgentWorkflowBuilder.BuildSequential([researchAgent, writingAgent, reviewAgent]);
+
+// Ejecutar con streaming
+var messages = new List<ChatMessage> { new(ChatRole.User, "Investiga sobre IA...") };
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+// Procesar eventos
+await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+{
+    if (evt is AgentRunUpdateEvent e)
+        Console.Write(e.Data);  // Streaming de cada agente
+    else if (evt is WorkflowOutputEvent output)
+        break;  // Workflow completado
+}
 ```
+
+**Conceptos clave**:
+- `ChatClientAgent`: Agente respaldado por un cliente de chat con instrucciones
+- `AgentWorkflowBuilder.BuildSequential()`: Crea pipeline donde cada agente procesa en orden
+- `InProcessExecution.StreamAsync()`: Ejecuta el workflow con streaming
+- `AgentRunUpdateEvent`: Fragmentos de respuesta en tiempo real
+- `WorkflowOutputEvent`: Resultado final con todos los mensajes
 
 #### Workflow Paralelo
 
@@ -112,9 +145,9 @@ var finalResult = await reviewAgent.InvokeAsync($"Revisar y mejorar: {draftResul
 // Ejecutar en paralelo
 var tasks = new[]
 {
-    newsAgent.InvokeAsync("Últimas noticias de IA"),
-    weatherAgent.InvokeAsync("Clima en Madrid"),
-    stocksAgent.InvokeAsync("Precio de MSFT")
+    newsAgent.RunAsync(messages),
+    weatherAgent.RunAsync(messages),
+    stocksAgent.RunAsync(messages)
 };
 
 var results = await Task.WhenAll(tasks);
@@ -133,10 +166,8 @@ var groupChat = new AgentGroupChat(
     terminationCondition: new MaxTurnsTerminationCondition(10)
 );
 
-// Iniciar conversación
-await groupChat.InvokeAsync("¿Cómo mejorar la experiencia del usuario en nuestra app?");
-
-// El framework maneja los turnos automáticamente
+// Iniciar conversación colaborativa
+await groupChat.InvokeAsync("¿Cómo mejorar la experiencia del usuario?");
 ```
 
 ---
@@ -165,48 +196,6 @@ graph TD
     F[Reiniciar app] -->|Recuperar thread| B
     B -->|Cargar desde BD| C
     F -->|Continuar| B
-```
-
-#### Código de Ejemplo
-
-```csharp
-using Azure.AI.Projects;
-
-// Crear cliente de AI Projects
-var client = new AIProjectClient(
-    new Uri("https://tu-proyecto.azure.com"),
-    new DefaultAzureCredential()
-);
-
-// Crear agente persistente
-var agent = await client.CreateAgentAsync(
-    model: "gpt-5.2",
-    name: "PersistentAgent",
-    instructions: "Eres un asistente para workflows largos",
-    tools: new[] { weatherTool }
-);
-
-// Crear thread (conversación persistente)
-var thread = await client.CreateThreadAsync();
-
-// Enviar mensaje
-await client.CreateMessageAsync(thread.Id, "Analizar datos de ventas Q4");
-
-// Crear run (ejecución)
-var run = await client.CreateRunAsync(thread.Id, agent.Id);
-
-// Esperar completado (puede pausar aquí y reanudar después)
-while (run.Status == RunStatus.InProgress)
-{
-    await Task.Delay(1000);
-    run = await client.GetRunAsync(thread.Id, run.Id);
-}
-
-// --- PAUSAR: Cerrar aplicación, guardar thread.Id ---
-
-// --- REANUDAR: Abrir aplicación ---
-var resumedThread = await client.GetThreadAsync(thread.Id);
-// Continuar conversación donde quedó
 ```
 
 ---
@@ -238,7 +227,7 @@ En group chats, define **cuándo parar**:
 
 ### [Lab 01: Sequential Workflow](labs/01-sequential/)
 **Duración**: 20 minutos  
-Pipeline de 3 pasos: Research → Write → Review
+Pipeline de 3 pasos usando `AgentWorkflowBuilder.BuildSequential()`: Research → Write → Review
 
 ### [Lab 02: Parallel Workflow](labs/02-parallel/)
 **Duración**: 25 minutos  
@@ -261,7 +250,8 @@ Workflow persistente: pausar ejecución, cerrar programa, reanudar
 ## Checkpoint de Validación
 
 **Criterios de éxito**:
-- ✅ Workflow secuencial ejecuta 3 pasos en orden
+- ✅ Workflow secuencial usa `AgentWorkflowBuilder.BuildSequential()`
+- ✅ Streaming de eventos funciona con `WatchStreamAsync()`
 - ✅ Workflow paralelo ejecuta tareas simultáneamente (Task.WhenAll)
 - ✅ Delegation router selecciona agente correcto basado en tarea
 - ✅ Group chat alcanza terminación después de colaboración
@@ -273,9 +263,21 @@ Workflow persistente: pausar ejecución, cerrar programa, reanudar
 
 ## Troubleshooting Común
 
-### "Workflow secuencial no pasa datos entre pasos"
+### "ChatClientAgent no existe"
 
-**Solución**: Asegurar que el output de Paso N se incluye en el prompt de Paso N+1
+**Causa**: Falta el paquete de workflows  
+**Solución**: 
+```bash
+dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
+```
+
+### "DefaultAzureCredential authentication failed"
+
+**Causa**: No hay sesión activa de Azure CLI  
+**Solución**: 
+```bash
+az login
+```
 
 ### "Task.WhenAll arroja error"
 
@@ -287,15 +289,11 @@ Workflow persistente: pausar ejecución, cerrar programa, reanudar
 **Causa**: Condición de terminación nunca se cumple  
 **Solución**: Agregar MaxTurns como fallback: `new MaxTurnsTerminationCondition(20)`
 
-### "Azure AI Agent Service: authentication fails"
-
-**Causa**: Credenciales de Azure no configuradas  
-**Solución**: `az login` o configurar variables de entorno para DefaultAzureCredential
-
 ---
 
 ## Recursos Adicionales
 
+- [Sequential Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/sequential)
 - [Agent Orchestration Patterns](https://learn.microsoft.com/microsoft-agent-framework/orchestration)
 - [Azure AI Agent Service Docs](https://learn.microsoft.com/azure/ai-services/agents)
 
