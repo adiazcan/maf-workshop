@@ -57,23 +57,28 @@ graph TD
 
 ---
 
-#### 3. Workflow de Delegación
+#### 3. Workflow de Delegación con Handoff (`AgentWorkflowBuilder.CreateHandoffBuilderWith()`)
 
-Un **coordinator agent** analiza la tarea y delega al especialista apropiado.
+Un **triage agent** analiza la tarea y **transfiere el control completo** al especialista apropiado. A diferencia de Agent-as-Tool, en Handoff el agente receptor toma propiedad total de la tarea.
 
 ```mermaid
 graph TD
-    A[Usuario] -->|Tarea| B[ProjectManagerAgent]
-    B -->|Diseño| C[DesignerAgent]
-    B -->|Código| D[DeveloperAgent]
-    B -->|Testing| E[QAAgent]
-    C --> B
-    D --> B
-    E --> B
-    B -->|Resultado| A
+    A[Usuario] -->|Tarea| B[TriageAgent]
+    B -->|Handoff| C{¿Qué especialista?}
+    C -->|handoff_to_designer| D[DesignerAgent]
+    C -->|handoff_to_developer| E[DeveloperAgent]
+    C -->|handoff_to_qa| F[QAAgent]
+    D -->|Respuesta completa| A
+    E -->|Respuesta completa| A
+    F -->|Respuesta completa| A
+    D -.->|Puede retornar| B
+    E -.->|Puede retornar| B
+    F -.->|Puede retornar| B
 ```
 
-**Casos de uso**: Routing inteligente, especialización por dominio
+**Casos de uso**: Routing inteligente, especialización por dominio, soporte técnico multi-nivel
+
+📚 **Referencia**: [Handoff Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff)
 
 ---
 
@@ -192,6 +197,70 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 - `AgentRunUpdateEvent`: Fragmentos de respuesta en tiempo real
 - `WorkflowOutputEvent`: Resultado final con todos los mensajes
 
+#### Workflow de Handoff con AgentWorkflowBuilder
+
+```csharp
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
+
+// Crear cliente de Azure OpenAI
+var client = new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
+
+// Crear agentes especializados con ChatClientAgent
+ChatClientAgent triageAgent = new(client,
+    "Eres un coordinador. Analiza tareas y haz handoff al especialista correcto.",
+    "triage_agent", "Coordinador que asigna tareas");
+
+ChatClientAgent designerAgent = new(client,
+    "Eres un diseñador UI/UX experto.",
+    "designer_agent", "Especialista en diseño");
+
+ChatClientAgent developerAgent = new(client,
+    "Eres un desarrollador senior.",
+    "developer_agent", "Especialista en desarrollo");
+
+// Configurar reglas de handoff
+var workflow = AgentWorkflowBuilder
+    .CreateHandoffBuilderWith(triageAgent)                              // Agente inicial
+    .WithHandoffs(triageAgent, [designerAgent, developerAgent])         // Triage → Especialistas
+    .WithHandoff(designerAgent, triageAgent)                            // Designer → Triage
+    .WithHandoff(developerAgent, triageAgent)                           // Developer → Triage
+    .Build();
+
+// Ejecutar workflow con streaming
+var messages = new List<ChatMessage> { new(ChatRole.User, "Diseña una pantalla de login") };
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+// Procesar eventos - detectar handoffs
+string currentAgent = "triage_agent";
+await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+{
+    if (evt is AgentRunUpdateEvent e)
+    {
+        if (e.ExecutorId != currentAgent)
+        {
+            Console.WriteLine($"🔀 Handoff: {currentAgent} → {e.ExecutorId}");
+            currentAgent = e.ExecutorId ?? currentAgent;
+        }
+        Console.Write(e.Data);  // Streaming de respuesta
+    }
+    else if (evt is WorkflowOutputEvent)
+        break;
+}
+```
+
+**Conceptos clave**:
+- `CreateHandoffBuilderWith()`: Define el agente inicial del workflow
+- `WithHandoffs()`: Configura a qué agentes puede hacer handoff
+- El cambio de `ExecutorId` en eventos indica un handoff
+- El agente receptor toma **control completo** de la tarea
+
 ---
 
 ### Referencia Rápida: APIs de Workflow
@@ -200,6 +269,8 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 |--------|-------------|
 | `AgentWorkflowBuilder.BuildSequential()` | Pipeline en orden: A → B → C |
 | `AgentWorkflowBuilder.BuildConcurrent()` | Todos en paralelo: A ‖ B ‖ C |
+| `AgentWorkflowBuilder.CreateHandoffBuilderWith()` | Handoff con transferencia de control |
+| `.WithHandoffs(from, [to1, to2])` | Configurar reglas de handoff |
 | `InProcessExecution.StreamAsync()` | Ejecutar con eventos de streaming |
 | `TurnToken(emitEvents: true)` | Habilitar emisión de eventos |
 | `AgentRunUpdateEvent` | Progreso de cada agente |
@@ -284,9 +355,9 @@ Pipeline de 3 pasos usando `AgentWorkflowBuilder.BuildSequential()`: Research �
 **Duración**: 25 minutos  
 Orquestación concurrente con `AgentWorkflowBuilder.BuildConcurrent()`: 3 agentes (Investigador, Marketing, Legal) analizan el mismo prompt simultáneamente
 
-### [Lab 03: Delegation Workflow](labs/03-delegation/)
+### [Lab 03: Delegation Workflow con Handoff](labs/03-delegation/)
 **Duración**: 25 minutos  
-ProjectManager delega a Designer, Developer o QA según tipo de tarea
+TriageAgent transfiere control a Designer, Developer o QA usando `CreateHandoffBuilderWith()`
 
 ### [Lab 04: Group Chat](labs/04-group-chat/)
 **Duración**: 30 minutos  
@@ -303,8 +374,9 @@ Workflow persistente: pausar ejecución, cerrar programa, reanudar
 **Criterios de éxito**:
 - ✅ Workflow secuencial usa `AgentWorkflowBuilder.BuildSequential()`
 - ✅ Workflow concurrente usa `AgentWorkflowBuilder.BuildConcurrent()`
+- ✅ Workflow de handoff usa `AgentWorkflowBuilder.CreateHandoffBuilderWith()`
 - ✅ Streaming de eventos funciona con `WatchStreamAsync()`
-- ✅ Delegation router selecciona agente correcto basado en tarea
+- ✅ Handoff transfiere control al especialista correcto según tarea
 - ✅ Group chat alcanza terminación después de colaboración
 - ✅ Thread persiste y se puede reanudar después de cerrar aplicación
 
@@ -346,6 +418,7 @@ az login
 
 - [Sequential Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/sequential)
 - [Concurrent Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/concurrent)
+- [Handoff Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff)
 - [Agent Orchestration Patterns](https://learn.microsoft.com/microsoft-agent-framework/orchestration)
 - [Azure AI Agent Service Docs](https://learn.microsoft.com/azure/ai-services/agents)
 
