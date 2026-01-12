@@ -124,6 +124,7 @@ Reemplaza el contenido de `Program.cs` con el siguiente código que implementa S
 
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
