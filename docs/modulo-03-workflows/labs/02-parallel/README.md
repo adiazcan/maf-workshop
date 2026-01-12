@@ -1,100 +1,241 @@
-# Lab 02: Workflow Paralelo
+# Lab 02: Workflow Concurrente (Parallel)
 
 **Duración**: 25 minutos  
 **Nivel**: Intermedio  
-**Objetivo**: Implementar ejecución paralela de múltiples agentes independientes con agregación de resultados
+**Objetivo**: Implementar orquestación concurrente donde múltiples agentes trabajan en la misma tarea simultáneamente usando `AgentWorkflowBuilder.BuildConcurrent()`
 
 ## Descripción
 
-En este lab implementarás un workflow paralelo donde 3 agentes independientes ejecutan simultáneamente y sus resultados se combinan en una respuesta unificada:
+En este lab implementarás un **workflow concurrente** usando la API oficial de Microsoft Agent Framework. A diferencia de un enfoque manual con `Task.WhenAll`, utilizaremos `AgentWorkflowBuilder.BuildConcurrent()` que proporciona:
 
-1. **NewsAgent**: Obtiene titulares de noticias
-2. **WeatherAgent**: Obtiene información del clima
-3. **StocksAgent**: Obtiene información bursátil
+- Ejecución paralela automática de todos los agentes
+- Agregación de resultados integrada
+- Streaming de eventos para monitorear progreso en tiempo real
+- Manejo de errores unificado
 
-Este patrón es ideal cuando las tareas son **independientes** y no necesitan información entre sí.
+**Escenario**: Tres expertos (Investigador, Marketing, Legal) analizarán el mismo prompt simultáneamente, cada uno aportando su perspectiva única.
 
 ```mermaid
 graph TD
-    A[Usuario] -->|Solicitud| B[Orquestador]
-    B -->|Paralelo| C[NewsAgent]
-    B -->|Paralelo| D[WeatherAgent]
-    B -->|Paralelo| E[StocksAgent]
-    C --> F[Agregador]
+    A[Usuario] -->|Mismo Prompt| B[AgentWorkflowBuilder.BuildConcurrent]
+    B -->|Paralelo| C[🔍 Investigador]
+    B -->|Paralelo| D[📣 Marketing]
+    B -->|Paralelo| E[⚖️ Legal]
+    C --> F[Agregador Automático]
     D --> F
     E --> F
-    F -->|Briefing Unificado| G[Usuario]
+    F -->|Resultados Combinados| G[Usuario]
 ```
+
+## Referencia Oficial
+
+📚 **Documentación**: [Microsoft Agent Framework - Concurrent Orchestration](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/concurrent?pivots=programming-language-csharp)
 
 ## Prerequisitos
 
 - ✅ .NET 10 SDK instalado
-- ✅ Azure OpenAI configurado con modelo `gpt-5.2`
+- ✅ Azure CLI instalado y autenticado (`az login`)
+- ✅ Azure OpenAI configurado con modelo `gpt-4o` o superior
 - ✅ Completar Lab 01: Sequential Workflow
+
+## Conceptos Clave
+
+| Concepto | Descripción |
+|----------|-------------|
+| `ChatClientAgent` | Agente que usa `IChatClient` para comunicación con el modelo |
+| `AgentWorkflowBuilder.BuildConcurrent()` | Construye un workflow donde todos los agentes procesan la misma entrada en paralelo |
+| `InProcessExecution.StreamAsync()` | Ejecuta el workflow con streaming de eventos |
+| `AgentRunUpdateEvent` | Evento emitido cuando un agente tiene actualizaciones |
+| `WorkflowOutputEvent` | Evento final con los resultados agregados de todos los agentes |
 
 ## Pasos del Lab
 
-### Paso 1: Crear el Proyecto
+### Paso 1: Crear el Proyecto desde Cero
 
 ```bash
-# Navegar a la carpeta del lab
+# Crear carpeta del proyecto
+mkdir -p docs/modulo-03-workflows/labs/02-parallel
 cd docs/modulo-03-workflows/labs/02-parallel
 
-# Restaurar paquetes
-dotnet restore
-```
+# Crear proyecto .NET
+dotnet new console -n ParallelWorkflow -o .
 
-### Paso 2: Configurar API Key
+# Agregar paquetes necesarios
+dotnet add package Azure.AI.OpenAI --version 2.2.0
+dotnet add package Azure.Identity --version 1.14.0
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.Workflows --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Extensions.AI --version 10.0.0
+dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
+dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
+dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
 
-```bash
 # Inicializar user secrets
 dotnet user-secrets init
-
-# Configurar la API key
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
 ```
 
-### Paso 3: Configurar Endpoint
+### Paso 2: Configurar appsettings.json
 
-Edita `appsettings.json` con tu endpoint de Azure OpenAI:
+Crea el archivo `appsettings.json`:
 
 ```json
 {
   "AzureOpenAI": {
     "Endpoint": "https://TU-RECURSO.openai.azure.com/",
-    "DeploymentName": "gpt-5.2"
+    "DeploymentName": "gpt-4o"
   }
 }
 ```
 
-### Paso 4: Revisar el Código
+### Paso 3: Autenticación con Azure CLI
 
-Abre `Program.cs` y observa:
+Este lab usa `AzureCliCredential` para autenticación (más seguro que API keys):
 
-1. **Agentes independientes** (líneas 45-90):
-   - Cada agente tiene un propósito específico y no comparte estado
-   - Las instrucciones son especializadas para cada dominio
+```bash
+# Iniciar sesión en Azure
+az login
 
-2. **Función helper de invocación** (líneas 95-110):
-   - `InvokeAgentAsync` encapsula la lógica de llamada
-   - Mide el tiempo de ejecución de cada agente
-   - Retorna una tupla con nombre, resultado y tiempo
+# Verificar que estás en la suscripción correcta
+az account show
+```
 
-3. **Task.WhenAll para paralelismo** (líneas 120-135):
-   ```csharp
-   var newsTask = InvokeAgentAsync(newsAgent, "...");
-   var weatherTask = InvokeAgentAsync(weatherAgent, "...");
-   var stocksTask = InvokeAgentAsync(stocksAgent, "...");
-   
-   // Ejecuta las 3 tareas SIMULTÁNEAMENTE
-   var results = await Task.WhenAll(newsTask, weatherTask, stocksTask);
-   ```
+### Paso 4: Crear el Cliente Azure OpenAI
 
-4. **Agregación de resultados** (líneas 150-170):
-   - Los resultados se combinan en un briefing unificado
-   - Se mantiene la estructura individual de cada agente
+En `Program.cs`, comienza con la configuración del cliente:
 
-### Paso 5: Ejecutar el Workflow
+```csharp
+using System.Diagnostics;
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
+
+// Cargar configuración
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddUserSecrets<Program>()
+    .Build();
+
+var endpoint = configuration["AzureOpenAI:Endpoint"] 
+    ?? throw new InvalidOperationException("Falta: AzureOpenAI:Endpoint");
+var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
+    ?? throw new InvalidOperationException("Falta: AzureOpenAI:DeploymentName");
+
+// Crear cliente con AzureCliCredential (no requiere API key)
+var chatClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
+```
+
+**💡 Nota**: `AsIChatClient()` convierte el cliente de Azure OpenAI a la interfaz `IChatClient` que requiere MAF.
+
+### Paso 5: Definir los Agentes Especializados
+
+Crea tres agentes con diferentes perspectivas usando `ChatClientAgent`:
+
+```csharp
+// Agente 1: Investigador de Mercado
+var researcherAgent = new ChatClientAgent(chatClient,
+    """
+    Eres un experto investigador de mercado y productos. Dado un tema:
+    1. Proporciona insights concisos y basados en hechos
+    2. Identifica oportunidades de mercado
+    3. Señala riesgos potenciales
+    
+    Responde en español. Máximo 150 palabras.
+    """);
+
+// Agente 2: Estratega de Marketing
+var marketerAgent = new ChatClientAgent(chatClient,
+    """
+    Eres un estratega de marketing creativo. Dado un tema:
+    1. Crea propuestas de valor convincentes
+    2. Define mensajes para el público objetivo
+    3. Incluye un slogan o tagline
+    
+    Responde en español. Máximo 150 palabras.
+    """);
+
+// Agente 3: Asesor Legal
+var legalAgent = new ChatClientAgent(chatClient,
+    """
+    Eres un asesor legal y de cumplimiento. Dado un tema:
+    1. Identifica restricciones regulatorias
+    2. Señala posibles riesgos legales
+    3. Recomienda disclaimers necesarios
+    
+    Responde en español. Máximo 150 palabras.
+    """);
+
+var agents = new[] { researcherAgent, marketerAgent, legalAgent };
+```
+
+### Paso 6: Construir el Workflow Concurrente
+
+Usa `AgentWorkflowBuilder.BuildConcurrent()` para crear el workflow:
+
+```csharp
+// BuildConcurrent() crea un workflow donde TODOS los agentes
+// procesan la misma entrada simultáneamente
+var workflow = AgentWorkflowBuilder.BuildConcurrent(agents);
+```
+
+**🔑 Diferencia clave**: A diferencia de `Task.WhenAll`, `BuildConcurrent()` maneja automáticamente:
+- La distribución del prompt a todos los agentes
+- La recolección y agregación de resultados
+- El streaming de eventos de progreso
+
+### Paso 7: Ejecutar el Workflow con Streaming
+
+```csharp
+var userPrompt = "Estamos lanzando una nueva bicicleta eléctrica económica para commuters urbanos.";
+var messages = new List<ChatMessage> { new(ChatRole.User, userPrompt) };
+
+// Ejecutar con streaming de eventos
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+// Recolectar resultados
+List<ChatMessage> results = new();
+
+await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
+{
+    if (evt is AgentRunUpdateEvent e)
+    {
+        // Progreso de un agente individual
+        Console.WriteLine($"⚡ [{e.ExecutorId}]: {e.Data}");
+    }
+    else if (evt is WorkflowOutputEvent outputEvt)
+    {
+        // Resultado final agregado
+        results = (List<ChatMessage>)outputEvt.Data!;
+        break;
+    }
+}
+```
+
+### Paso 8: Mostrar Resultados Agregados
+
+```csharp
+var agentNames = new[] { "🔍 Investigador", "📣 Marketing", "⚖️ Legal" };
+var agentIndex = 0;
+
+foreach (var message in results)
+{
+    if (message.Role == ChatRole.Assistant)
+    {
+        var agentName = agentNames[agentIndex++];
+        Console.WriteLine($"\n{agentName}:");
+        Console.WriteLine(message.Text);
+    }
+}
+```
+
+### Paso 9: Ejecutar y Validar
 
 ```bash
 dotnet run
@@ -104,141 +245,122 @@ dotnet run
 
 ```
 ═══════════════════════════════════════════════════════════════════
-           WORKFLOW PARALELO: News ║ Weather ║ Stocks
+    WORKFLOW CONCURRENTE: Múltiples Perspectivas Simultáneas
 ═══════════════════════════════════════════════════════════════════
 
-✓ NewsAgent creado - Especialista en noticias
-✓ WeatherAgent creado - Especialista en clima
-✓ StocksAgent creado - Especialista en mercados
-
-┌─────────────────────────────────────────────────────────────────┐
-│ EJECUCIÓN PARALELA: Todos los agentes al mismo tiempo          │
-└─────────────────────────────────────────────────────────────────┘
+✓ Cliente Azure OpenAI configurado con AzureCliCredential
+✓ 3 agentes especializados creados
+✓ Workflow concurrente construido con AgentWorkflowBuilder.BuildConcurrent()
 
 ═══════════════════════════════════════════════════════════════════
-                    RESULTADOS INDIVIDUALES
+              PROGRESO EN TIEMPO REAL (Streaming)
 ═══════════════════════════════════════════════════════════════════
 
-┌─── NewsAgent (2340ms) ───
-│ • Titular 1: [Noticia de tecnología]
-│ • Titular 2: [Noticia de negocios]
-│ • Titular 3: [Noticia mundial]
+⚡ [Agent_0]: Procesando análisis de mercado...
+⚡ [Agent_1]: Generando estrategia de marketing...
+⚡ [Agent_2]: Evaluando consideraciones legales...
+
+═══════════════════════════════════════════════════════════════════
+            RESULTADOS AGREGADOS DE TODOS LOS AGENTES
+═══════════════════════════════════════════════════════════════════
+
+┌─── 🔍 Investigador ───
+│ **Insights de Mercado:**
+│ - El mercado de e-bikes crece 10% anual en LATAM
+│ - Segmento económico tiene competencia limitada
+│ ...
 └────────────────────────────────────────────────────────────────
 
-┌─── WeatherAgent (1890ms) ───
-│ Madrid, España
-│ Temperatura: 18°C
-│ Condición: Parcialmente nublado
-│ Humedad: 45%
+┌─── 📣 Marketing ───
+│ **Propuesta de Valor:**
+│ "Muévete verde, muévete inteligente"
+│ - Target: Profesionales urbanos 25-45 años
+│ ...
 └────────────────────────────────────────────────────────────────
 
-┌─── StocksAgent (2100ms) ───
-│ MSFT (Microsoft)
-│ Precio: $425.50
-│ Cambio: +1.2% 📈
-│ Tendencia: Alcista
+┌─── ⚖️ Legal ───
+│ **Consideraciones Regulatorias:**
+│ - Cumplir NOM-001-SCT (vehículos)
+│ - Certificación de batería UL
+│ ...
 └────────────────────────────────────────────────────────────────
-
-═══════════════════════════════════════════════════════════════════
-               RESPUESTA AGREGADA (BRIEFING DIARIO)
-═══════════════════════════════════════════════════════════════════
-
-📰 **NOTICIAS DEL DÍA**
-[Contenido del NewsAgent]
-
-☀️ **CLIMA EN MADRID**
-[Contenido del WeatherAgent]
-
-📊 **MERCADOS - MICROSOFT (MSFT)**
-[Contenido del StocksAgent]
 
 ═══════════════════════════════════════════════════════════════════
                     ANÁLISIS DE RENDIMIENTO
 ═══════════════════════════════════════════════════════════════════
 
-📊 Tiempos individuales de cada agente:
-   • NewsAgent: 2340ms
-   • WeatherAgent: 1890ms
-   • StocksAgent: 2100ms
-
-⏱️  Tiempo PARALELO (real):        2450ms
-⏱️  Tiempo SECUENCIAL (estimado): 6330ms
-💨 Tiempo ahorrado:               3880ms
-🚀 Factor de aceleración:         2.58x más rápido
-
-═══════════════════════════════════════════════════════════════════
-                    WORKFLOW COMPLETADO
-═══════════════════════════════════════════════════════════════════
-
-✓ Los 3 agentes ejecutaron en PARALELO usando Task.WhenAll
-✓ Cada agente procesó su consulta de forma independiente
-✓ Los resultados se agregaron en un briefing unificado
-✓ Ejecución paralela fue ~2.6x más rápida que secuencial
+⏱️  Tiempo CONCURRENTE (real):     2450ms
+⏱️  Tiempo SECUENCIAL (estimado): 7350ms
+🚀 Factor de aceleración:         ~3x más rápido
 ```
-
-### Paso 6: Validar Resultados
-
-Verifica que:
-
-1. ✅ Los 3 agentes ejecutaron (hay resultados de cada uno)
-2. ✅ El tiempo paralelo es MENOR que la suma de tiempos individuales
-3. ✅ Los resultados se agregan correctamente en el briefing
-4. ✅ El factor de aceleración es >1x (idealmente ~2-3x con 3 agentes)
 
 ## Checkpoint de Validación
 
-**Criterio de éxito**: Los 3 agentes ejecutan en paralelo y el tiempo total es menor que la suma de tiempos individuales.
+**Criterio de éxito**: Los 3 agentes ejecutan concurrentemente y cada uno aporta una perspectiva diferente al mismo problema.
 
 **Validación del instructor**:
-- [ ] La sección "ANÁLISIS DE RENDIMIENTO" muestra el tiempo paralelo
-- [ ] El factor de aceleración es mayor a 1.5x
-- [ ] El briefing unificado contiene información de los 3 agentes
+- [ ] El workflow usa `AgentWorkflowBuilder.BuildConcurrent()`
+- [ ] Se muestran eventos de streaming (`AgentRunUpdateEvent`)
+- [ ] Los resultados incluyen respuestas de los 3 agentes
+- [ ] Cada agente aporta una perspectiva diferente (mercado, marketing, legal)
 
 ## Troubleshooting
 
-### "Task.WhenAll arroja excepción"
+### "AzureCliCredential authentication failed"
 
-**Causa**: Una o más tareas fallaron.
+**Causa**: No has iniciado sesión en Azure CLI.
 
-**Solución**: Envuelve cada tarea en try-catch para manejo individual de errores:
-
-```csharp
-async Task<(string, string, long)> SafeInvokeAgentAsync(ChatCompletionAgent agent, string prompt)
-{
-    try
-    {
-        return await InvokeAgentAsync(agent, prompt);
-    }
-    catch (Exception ex)
-    {
-        return (agent.Name ?? "Unknown", $"Error: {ex.Message}", 0);
-    }
-}
+**Solución**:
+```bash
+az login
+az account set --subscription "TU-SUSCRIPCION"
 ```
 
-### "El tiempo paralelo no es menor que secuencial"
+### "El workflow no emite eventos de streaming"
 
-**Causa posible 1**: Rate limiting de Azure OpenAI - las llamadas se están serializando.
+**Causa**: Falta `emitEvents: true` en `TurnToken`.
 
-**Solución**: Aumentar el límite de TPM (Tokens Per Minute) en Azure Portal.
+**Solución**: Verifica que uses:
+```csharp
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+```
 
-**Causa posible 2**: La máquina tiene poca capacidad de threads.
+### "Results está vacío después del workflow"
 
-**Solución**: Esto es normal en algunos entornos. El beneficio de paralelismo se verá mejor con más recursos.
+**Causa**: El loop de eventos no está esperando correctamente.
 
-### "Un agente tarda mucho más que los otros"
+**Solución**: Asegúrate de usar `await foreach` con `ConfigureAwait(false)`:
+```csharp
+await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
+```
 
-**Causa**: Prompts más complejos o respuestas más largas.
+### "Los agentes tardan mucho"
 
-**Solución**: Esto es esperado. Task.WhenAll espera a que TODOS terminen, así que el tiempo total será el del agente más lento.
+**Causa**: Rate limiting de Azure OpenAI.
+
+**Solución**: 
+1. Verificar cuota de TPM en Azure Portal
+2. Reducir el `MaxTokens` en las instrucciones de los agentes
+3. Usar un deployment con mayor capacidad
 
 ## Experimentos Opcionales
 
 Si terminas antes, intenta:
 
-1. **Agregar un cuarto agente**: Crea un `CryptoAgent` que obtenga precios de criptomonedas
-2. **Implementar timeout**: Agrega `Task.WhenAll` con `CancellationToken` y timeout de 30 segundos
-3. **Manejo de errores parciales**: Implementa lógica para retornar resultados parciales si un agente falla
+1. **Agregar un cuarto agente**: Crea un `FinanceAgent` que analice el aspecto financiero
+2. **Implementar un agregador personalizado**: Combina las respuestas en un resumen ejecutivo
+3. **Cambiar el prompt**: Prueba con diferentes productos o servicios
+
+## Comparación: Task.WhenAll vs BuildConcurrent
+
+| Aspecto | Task.WhenAll | BuildConcurrent |
+|---------|--------------|-----------------|
+| Configuración | Manual | Automática |
+| Distribución de prompt | Manual | Automática |
+| Agregación de resultados | Manual | Automática |
+| Streaming de eventos | No incluido | Incluido |
+| Manejo de errores | Manual | Integrado |
+| Integración con MAF | Baja | Nativa |
 
 ## Siguiente Lab
 

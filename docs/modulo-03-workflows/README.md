@@ -35,22 +35,25 @@ graph LR
 
 ---
 
-#### 2. Workflow Paralelo
+#### 2. Workflow Concurrente (`AgentWorkflowBuilder.BuildConcurrent()`)
 
-Agentes ejecutan tareas **simultáneamente**, resultados se agregan al final.
+Múltiples agentes trabajan en la **misma tarea simultáneamente**, cada uno aportando su perspectiva única. Los resultados se agregan automáticamente.
 
 ```mermaid
 graph TD
-    A[Tarea] --> B[NewsAgent]
-    A --> C[WeatherAgent]
-    A --> D[StocksAgent]
-    B --> E[Agregador]
-    C --> E
-    D --> E
-    E --> F[Respuesta Unificada]
+    A[Mismo Prompt] --> B[AgentWorkflowBuilder.BuildConcurrent]
+    B --> C[🔍 Investigador]
+    B --> D[📣 Marketing]
+    B --> E[⚖️ Legal]
+    C --> F[Agregador Automático]
+    D --> F
+    E --> F
+    F --> G[Perspectivas Combinadas]
 ```
 
-**Casos de uso**: Búsquedas independientes, análisis multi-fuente
+**Casos de uso**: Análisis multi-perspectiva, brainstorming, ensemble reasoning, voting systems
+
+📚 **Referencia**: [Concurrent Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/concurrent)
 
 ---
 
@@ -96,6 +99,56 @@ graph TD
 
 ### Implementación de Workflows con MAF
 
+#### Workflow Concurrente con AgentWorkflowBuilder
+
+```csharp
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
+
+// Crear cliente de Azure OpenAI
+var client = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
+
+// Crear agentes con diferentes perspectivas
+var researcherAgent = new ChatClientAgent(client,
+    "Eres un investigador de mercado. Analiza oportunidades y riesgos.");
+
+var marketerAgent = new ChatClientAgent(client,
+    "Eres un estratega de marketing. Crea propuestas de valor y mensajes.");
+
+var legalAgent = new ChatClientAgent(client,
+    "Eres un asesor legal. Identifica restricciones y riesgos regulatorios.");
+
+// Construir workflow concurrente - todos procesan el MISMO prompt
+var workflow = AgentWorkflowBuilder.BuildConcurrent([researcherAgent, marketerAgent, legalAgent]);
+
+// Ejecutar con streaming
+var messages = new List<ChatMessage> { new(ChatRole.User, "Lanzamos una bicicleta eléctrica...") };
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+// Procesar eventos de todos los agentes
+List<ChatMessage> results = new();
+await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+{
+    if (evt is AgentRunUpdateEvent e)
+        Console.WriteLine($"[{e.ExecutorId}]: {e.Data}");  // Progreso por agente
+    else if (evt is WorkflowOutputEvent output)
+    {
+        results = (List<ChatMessage>)output.Data!;
+        break;
+    }
+}
+```
+
+**Conceptos clave**:
+- `AgentWorkflowBuilder.BuildConcurrent()`: Todos los agentes procesan la misma entrada en paralelo
+- Agregación automática de resultados en `WorkflowOutputEvent`
+- Cada agente aporta su perspectiva única al mismo problema
+
 #### Workflow Secuencial con AgentWorkflowBuilder
 
 ```csharp
@@ -139,22 +192,20 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 - `AgentRunUpdateEvent`: Fragmentos de respuesta en tiempo real
 - `WorkflowOutputEvent`: Resultado final con todos los mensajes
 
-#### Workflow Paralelo
+---
 
-```csharp
-// Ejecutar en paralelo
-var tasks = new[]
-{
-    newsAgent.RunAsync(messages),
-    weatherAgent.RunAsync(messages),
-    stocksAgent.RunAsync(messages)
-};
+### Referencia Rápida: APIs de Workflow
 
-var results = await Task.WhenAll(tasks);
+| Método | Descripción |
+|--------|-------------|
+| `AgentWorkflowBuilder.BuildSequential()` | Pipeline en orden: A → B → C |
+| `AgentWorkflowBuilder.BuildConcurrent()` | Todos en paralelo: A ‖ B ‖ C |
+| `InProcessExecution.StreamAsync()` | Ejecutar con eventos de streaming |
+| `TurnToken(emitEvents: true)` | Habilitar emisión de eventos |
+| `AgentRunUpdateEvent` | Progreso de cada agente |
+| `WorkflowOutputEvent` | Resultado final agregado |
 
-// Agregar resultados
-var aggregated = string.Join("\n\n", results.Select(r => r.Content));
-```
+---
 
 #### Group Chat
 
@@ -229,9 +280,9 @@ En group chats, define **cuándo parar**:
 **Duración**: 20 minutos  
 Pipeline de 3 pasos usando `AgentWorkflowBuilder.BuildSequential()`: Research → Write → Review
 
-### [Lab 02: Parallel Workflow](labs/02-parallel/)
+### [Lab 02: Concurrent Workflow](labs/02-parallel/)
 **Duración**: 25 minutos  
-Ejecución paralela de 3 agentes independientes + agregación
+Orquestación concurrente con `AgentWorkflowBuilder.BuildConcurrent()`: 3 agentes (Investigador, Marketing, Legal) analizan el mismo prompt simultáneamente
 
 ### [Lab 03: Delegation Workflow](labs/03-delegation/)
 **Duración**: 25 minutos  
@@ -251,8 +302,8 @@ Workflow persistente: pausar ejecución, cerrar programa, reanudar
 
 **Criterios de éxito**:
 - ✅ Workflow secuencial usa `AgentWorkflowBuilder.BuildSequential()`
+- ✅ Workflow concurrente usa `AgentWorkflowBuilder.BuildConcurrent()`
 - ✅ Streaming de eventos funciona con `WatchStreamAsync()`
-- ✅ Workflow paralelo ejecuta tareas simultáneamente (Task.WhenAll)
 - ✅ Delegation router selecciona agente correcto basado en tarea
 - ✅ Group chat alcanza terminación después de colaboración
 - ✅ Thread persiste y se puede reanudar después de cerrar aplicación
@@ -294,6 +345,7 @@ az login
 ## Recursos Adicionales
 
 - [Sequential Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/sequential)
+- [Concurrent Orchestration - MAF Docs](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/concurrent)
 - [Agent Orchestration Patterns](https://learn.microsoft.com/microsoft-agent-framework/orchestration)
 - [Azure AI Agent Service Docs](https://learn.microsoft.com/azure/ai-services/agents)
 

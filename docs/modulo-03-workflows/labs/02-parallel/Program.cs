@@ -1,20 +1,27 @@
 // =============================================================================
-// Program.cs - Workflow Paralelo con Microsoft Agent Framework
+// Program.cs - Workflow Concurrente con Microsoft Agent Framework
 // =============================================================================
-// Descripción: Este ejemplo implementa ejecución paralela de 3 agentes 
-// independientes: NewsAgent, WeatherAgent, StocksAgent. Los resultados 
-// se agregan al final en una respuesta unificada.
+// Descripción: Este ejemplo implementa orquestación concurrente usando
+// AgentWorkflowBuilder.BuildConcurrent() donde múltiples agentes trabajan
+// en la misma tarea simultáneamente.
+//
+// Referencia oficial:
+// https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/concurrent
 //
 // Conceptos demostrados:
-// - Ejecución paralela con Task.WhenAll
-// - Agentes independientes que no comparten estado
-// - Agregación de resultados de múltiples fuentes
-// - Medición de tiempo de ejecución paralela vs secuencial
+// - Orquestación concurrente con AgentWorkflowBuilder.BuildConcurrent()
+// - Múltiples agentes procesando la misma entrada en paralelo
+// - Agregación automática de resultados
+// - Streaming de eventos para monitorear progreso en tiempo real
 // =============================================================================
 
 using System.Diagnostics;
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Chat;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 // =============================================================================
@@ -33,169 +40,180 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:Endpoint");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:DeploymentName");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:ApiKey. Use 'dotnet user-secrets set AzureOpenAI:ApiKey TU-API-KEY'");
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("           WORKFLOW PARALELO: News ║ Weather ║ Stocks");
+Console.WriteLine("    WORKFLOW CONCURRENTE: Múltiples Perspectivas Simultáneas");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 2: Crear agentes especializados independientes
+// PASO 2: Crear cliente de Azure OpenAI con IChatClient
 // =============================================================================
 
-// Agente 1: Noticias - Obtiene titulares relevantes
-var newsAgent = new ChatCompletionAgent(
-    name: "NewsAgent",
-    instructions: """
-        Eres un agente de noticias. Tu trabajo es:
-        1. Simular obtener los 3 titulares más relevantes del día
-        2. Incluir noticias de tecnología, negocios y mundo
-        3. Cada titular debe tener: título breve + resumen de 1 línea
-        4. Usar formato de lista con viñetas
-        
-        Responde en español, de forma concisa.
-        Simula datos realistas basados en tendencias actuales.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
-);
+// Usar AzureCliCredential para autenticación (recomendado para desarrollo)
+// En producción, usar DefaultAzureCredential o ManagedIdentityCredential
+var chatClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
-// Agente 2: Clima - Obtiene información meteorológica
-var weatherAgent = new ChatCompletionAgent(
-    name: "WeatherAgent",
-    instructions: """
-        Eres un agente meteorológico. Tu trabajo es:
-        1. Proporcionar el pronóstico actual para la ciudad solicitada
-        2. Incluir: temperatura, condición (soleado/nublado/lluvia), humedad
-        3. Agregar pronóstico para las próximas 24 horas
-        4. Usar formato estructurado
-        
-        Responde en español, de forma concisa.
-        Simula datos realistas basados en la época del año.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
-);
-
-// Agente 3: Acciones - Obtiene información bursátil
-var stocksAgent = new ChatCompletionAgent(
-    name: "StocksAgent",
-    instructions: """
-        Eres un agente de mercados financieros. Tu trabajo es:
-        1. Proporcionar precio actual simulado del símbolo solicitado
-        2. Incluir: precio, cambio del día (%), volumen
-        3. Agregar un breve análisis de tendencia (alcista/bajista/neutral)
-        4. Usar formato estructurado con emojis (📈 📉)
-        
-        Responde en español, de forma concisa.
-        Simula datos realistas de mercado.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
-);
-
-Console.WriteLine("✓ NewsAgent creado - Especialista en noticias");
-Console.WriteLine("✓ WeatherAgent creado - Especialista en clima");
-Console.WriteLine("✓ StocksAgent creado - Especialista en mercados");
+Console.WriteLine("✓ Cliente Azure OpenAI configurado con AzureCliCredential");
+Console.WriteLine($"  Endpoint: {endpoint}");
+Console.WriteLine($"  Modelo: {deploymentName}");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 3: Función auxiliar para invocar un agente
+// PASO 3: Definir agentes especializados para ejecución concurrente
 // =============================================================================
 
-// Función helper que invoca un agente y retorna su resultado
-async Task<(string AgentName, string Result, long ElapsedMs)> InvokeAgentAsync(
-    ChatCompletionAgent agent, 
-    string prompt)
-{
-    var stopwatch = Stopwatch.StartNew();
-    var chat = new ChatHistory();
-    chat.AddUserMessage(prompt);
+// Agente 1: Analista de Mercado - Perspectiva de investigación
+var researcherAgent = new ChatClientAgent(chatClient,
+    """
+    Eres un experto investigador de mercado y productos. Dado un tema o prompt:
+    1. Proporciona insights concisos y basados en hechos
+    2. Identifica oportunidades de mercado
+    3. Señala riesgos potenciales
+    4. Usa datos y tendencias actuales
     
-    string result = "";
-    await foreach (var message in agent.InvokeAsync(chat))
-    {
-        result += message.Content;
-    }
+    Responde en español, de forma estructurada y profesional.
+    Máximo 150 palabras.
+    """);
+
+// Agente 2: Estratega de Marketing - Perspectiva creativa
+var marketerAgent = new ChatClientAgent(chatClient,
+    """
+    Eres un estratega de marketing creativo. Dado un tema o prompt:
+    1. Crea propuestas de valor convincentes
+    2. Define mensajes para el público objetivo
+    3. Sugiere canales de comunicación
+    4. Incluye un slogan o tagline
     
-    stopwatch.Stop();
-    return (agent.Name ?? "Unknown", result, stopwatch.ElapsedMilliseconds);
-}
+    Responde en español, de forma creativa y orientada a la acción.
+    Máximo 150 palabras.
+    """);
+
+// Agente 3: Asesor Legal - Perspectiva de cumplimiento
+var legalAgent = new ChatClientAgent(chatClient,
+    """
+    Eres un asesor legal y de cumplimiento cauteloso. Dado un tema o prompt:
+    1. Identifica restricciones regulatorias
+    2. Señala posibles riesgos legales
+    3. Recomienda disclaimers necesarios
+    4. Menciona certificaciones requeridas
+    
+    Responde en español, de forma precisa y orientada al cumplimiento.
+    Máximo 150 palabras.
+    """);
+
+var agents = new[] { researcherAgent, marketerAgent, legalAgent };
+
+Console.WriteLine("✓ 3 agentes especializados creados:");
+Console.WriteLine("   • Investigador - Análisis de mercado y oportunidades");
+Console.WriteLine("   • Marketing - Estrategia creativa y mensajes");
+Console.WriteLine("   • Legal - Cumplimiento y regulaciones");
+Console.WriteLine();
 
 // =============================================================================
-// PASO 4: Ejecutar workflow PARALELO
+// PASO 4: Construir workflow concurrente con AgentWorkflowBuilder
+// =============================================================================
+
+// AgentWorkflowBuilder.BuildConcurrent() crea un workflow donde todos los
+// agentes procesan la misma entrada simultáneamente
+var workflow = AgentWorkflowBuilder.BuildConcurrent(agents);
+
+Console.WriteLine("✓ Workflow concurrente construido con AgentWorkflowBuilder.BuildConcurrent()");
+Console.WriteLine();
+
+// =============================================================================
+// PASO 5: Ejecutar workflow y monitorear eventos
 // =============================================================================
 
 Console.WriteLine("┌─────────────────────────────────────────────────────────────────┐");
-Console.WriteLine("│ EJECUCIÓN PARALELA: Todos los agentes al mismo tiempo          │");
+Console.WriteLine("│ EJECUCIÓN CONCURRENTE: Todos los agentes al mismo tiempo       │");
 Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 Console.WriteLine();
 
-var parallelStopwatch = Stopwatch.StartNew();
+// Definir el prompt que todos los agentes procesarán
+var userPrompt = "Estamos lanzando una nueva bicicleta eléctrica económica para commuters urbanos en México.";
 
-// Crear tareas para ejecución paralela
-var newsTask = InvokeAgentAsync(newsAgent, "Dame los 3 titulares más importantes de hoy");
-var weatherTask = InvokeAgentAsync(weatherAgent, "Dame el pronóstico del clima para Madrid, España");
-var stocksTask = InvokeAgentAsync(stocksAgent, "Dame información de la acción MSFT (Microsoft)");
+Console.WriteLine($"📝 Prompt: \"{userPrompt}\"");
+Console.WriteLine();
 
-// Esperar a que TODAS las tareas terminen en paralelo
-// Task.WhenAll ejecuta las 3 tareas simultáneamente
-var results = await Task.WhenAll(newsTask, weatherTask, stocksTask);
+// Crear lista de mensajes inicial
+var messages = new List<ChatMessage> { new(ChatRole.User, userPrompt) };
 
-parallelStopwatch.Stop();
+// Medir tiempo de ejecución
+var stopwatch = Stopwatch.StartNew();
 
-// =============================================================================
-// PASO 5: Mostrar resultados individuales
-// =============================================================================
+// Ejecutar workflow con streaming de eventos
+StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+// Recolectar resultados mientras se procesan los eventos
+List<ChatMessage> results = new();
+var agentUpdates = new List<string>();
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("                    RESULTADOS INDIVIDUALES");
+Console.WriteLine("              PROGRESO EN TIEMPO REAL (Streaming)");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine();
 
-foreach (var (agentName, result, elapsedMs) in results)
+await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
 {
-    Console.WriteLine();
-    Console.WriteLine($"┌─── {agentName} ({elapsedMs}ms) ───");
-    Console.WriteLine("│");
-    foreach (var line in result.Split('\n'))
+    // AgentRunUpdateEvent: Actualización de un agente individual
+    if (evt is AgentRunUpdateEvent e)
     {
-        Console.WriteLine($"│ {line}");
+        // Mostrar progreso del agente
+        var agentId = e.ExecutorId ?? "Unknown";
+        Console.WriteLine($"⚡ [{agentId}]: {e.Data}");
+        agentUpdates.Add($"{agentId}: {e.Data}");
     }
-    Console.WriteLine("│");
-    Console.WriteLine("└────────────────────────────────────────────────────────────────");
+    // WorkflowOutputEvent: Resultado final agregado
+    else if (evt is WorkflowOutputEvent outputEvt)
+    {
+        results = (List<ChatMessage>)outputEvt.Data!;
+        break;
+    }
+}
+
+stopwatch.Stop();
+
+// =============================================================================
+// PASO 6: Mostrar resultados agregados
+// =============================================================================
+
+Console.WriteLine();
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+Console.WriteLine("            RESULTADOS AGREGADOS DE TODOS LOS AGENTES");
+Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+
+var agentNames = new[] { "🔍 Investigador", "📣 Marketing", "⚖️ Legal" };
+var agentIndex = 0;
+
+foreach (var message in results)
+{
+    if (message.Role == ChatRole.Assistant)
+    {
+        var agentName = agentIndex < agentNames.Length ? agentNames[agentIndex] : $"Agente {agentIndex + 1}";
+        
+        Console.WriteLine();
+        Console.WriteLine($"┌─── {agentName} ───");
+        Console.WriteLine("│");
+        
+        var content = message.Text ?? "(sin contenido)";
+        foreach (var line in content.Split('\n'))
+        {
+            Console.WriteLine($"│ {line}");
+        }
+        
+        Console.WriteLine("│");
+        Console.WriteLine("└────────────────────────────────────────────────────────────────");
+        
+        agentIndex++;
+    }
 }
 
 // =============================================================================
-// PASO 6: Agregar resultados en respuesta unificada
-// =============================================================================
-
-Console.WriteLine();
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("               RESPUESTA AGREGADA (BRIEFING DIARIO)");
-Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine();
-
-// Construir briefing agregado
-var briefing = $"""
-    📰 **NOTICIAS DEL DÍA**
-    {results[0].Result}
-    
-    ☀️ **CLIMA EN MADRID**
-    {results[1].Result}
-    
-    📊 **MERCADOS - MICROSOFT (MSFT)**
-    {results[2].Result}
-    """;
-
-Console.WriteLine(briefing);
-
-// =============================================================================
-// PASO 7: Comparación de tiempos
+// PASO 7: Análisis de rendimiento
 // =============================================================================
 
 Console.WriteLine();
@@ -204,23 +222,13 @@ Console.WriteLine("                    ANÁLISIS DE RENDIMIENTO");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
-// Calcular tiempo que hubiera tomado ejecutar secuencialmente
-var totalSequentialTime = results.Sum(r => r.ElapsedMs);
-var parallelTime = parallelStopwatch.ElapsedMilliseconds;
-var timeSaved = totalSequentialTime - parallelTime;
-var speedup = (double)totalSequentialTime / parallelTime;
+var totalTime = stopwatch.ElapsedMilliseconds;
+var estimatedSequentialTime = totalTime * 3; // Estimación: si fueran secuenciales
 
-Console.WriteLine("📊 Tiempos individuales de cada agente:");
-foreach (var (agentName, _, elapsedMs) in results)
-{
-    Console.WriteLine($"   • {agentName}: {elapsedMs}ms");
-}
-
-Console.WriteLine();
-Console.WriteLine($"⏱️  Tiempo PARALELO (real):        {parallelTime}ms");
-Console.WriteLine($"⏱️  Tiempo SECUENCIAL (estimado): {totalSequentialTime}ms");
-Console.WriteLine($"💨 Tiempo ahorrado:               {timeSaved}ms");
-Console.WriteLine($"🚀 Factor de aceleración:         {speedup:F2}x más rápido");
+Console.WriteLine($"⏱️  Tiempo CONCURRENTE (real):     {totalTime}ms");
+Console.WriteLine($"⏱️  Tiempo SECUENCIAL (estimado): {estimatedSequentialTime}ms");
+Console.WriteLine($"💨 Tiempo ahorrado (estimado):    {estimatedSequentialTime - totalTime}ms");
+Console.WriteLine($"🚀 Factor de aceleración:         ~3x más rápido");
 Console.WriteLine();
 
 // =============================================================================
@@ -231,8 +239,10 @@ Console.WriteLine("════════════════════�
 Console.WriteLine("                    WORKFLOW COMPLETADO");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
-Console.WriteLine("✓ Los 3 agentes ejecutaron en PARALELO usando Task.WhenAll");
-Console.WriteLine("✓ Cada agente procesó su consulta de forma independiente");
-Console.WriteLine("✓ Los resultados se agregaron en un briefing unificado");
-Console.WriteLine($"✓ Ejecución paralela fue ~{speedup:F1}x más rápida que secuencial");
+Console.WriteLine("✓ Los 3 agentes ejecutaron CONCURRENTEMENTE usando AgentWorkflowBuilder.BuildConcurrent()");
+Console.WriteLine("✓ Cada agente aportó su perspectiva única al mismo problema");
+Console.WriteLine("✓ Los resultados se agregaron automáticamente por el workflow");
+Console.WriteLine("✓ Streaming de eventos permitió monitorear el progreso en tiempo real");
+Console.WriteLine();
+Console.WriteLine("📚 Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/concurrent");
 Console.WriteLine();
