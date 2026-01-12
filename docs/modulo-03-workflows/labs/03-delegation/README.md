@@ -458,7 +458,7 @@ for (int i = 0; i < tasks.Length; i++)
     try
     {
         // Ejecutar el workflow con streaming de eventos
-        StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+        await using StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
         await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
 
         // Procesar eventos del workflow
