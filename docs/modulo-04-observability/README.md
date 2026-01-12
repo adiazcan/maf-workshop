@@ -378,7 +378,7 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics =>
     {
         // Métricas de MAF (automáticas)
-        metrics.AddMeter("Microsoft.AI.Agents*");
+        metrics.AddMeter("Microsoft.Agents.AI*");
         
         // Métricas de runtime
         metrics.AddRuntimeInstrumentation();
@@ -389,7 +389,7 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing =>
     {
         // Trazas de MAF
-        tracing.AddSource("Microsoft.AI.Agents*");
+        tracing.AddSource("Microsoft.Agents.AI*");
         
         // Trazas de HTTP (Azure OpenAI calls)
         tracing.AddHttpClientInstrumentation();

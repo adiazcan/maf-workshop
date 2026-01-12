@@ -6,7 +6,7 @@
 // ============================================================================
 
 using System.ComponentModel;
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;

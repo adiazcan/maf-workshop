@@ -5,7 +5,7 @@
 // Lab: 02-agent-as-tool
 // ============================================================================
 
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 

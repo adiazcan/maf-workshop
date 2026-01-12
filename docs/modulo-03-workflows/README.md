@@ -126,7 +126,7 @@ var aggregated = string.Join("\n\n", results.Select(r => r.Content));
 #### Group Chat
 
 ```csharp
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 
 var groupChat = new AgentGroupChat(
     agents: new[] { brainstormAgent, criticAgent, synthesizerAgent },

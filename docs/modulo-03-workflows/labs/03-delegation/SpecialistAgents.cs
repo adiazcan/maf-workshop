@@ -5,7 +5,7 @@
 // ProjectManagerAgent: DesignerAgent, DeveloperAgent, QAAgent
 // =============================================================================
 
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 
 namespace DelegationWorkflow;
 

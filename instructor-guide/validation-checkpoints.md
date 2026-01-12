@@ -260,7 +260,7 @@ metrics.AddConsoleExporter();  // ← Verificar esta línea
 
 **Remediación si <75%**:
 1. Verificar que `AddConsoleExporter()` está presente
-2. Verificar que `AddMeter("Microsoft.AI.Agents*")` está configurado
+2. Verificar que `AddMeter("Microsoft.Agents.AI*")` está configurado
 3. Demo del instructor (1 min)
 
 ---
@@ -292,7 +292,7 @@ Instructor: "Alguien comparta pantalla mostrando la jerarquía"
 
 **Remediación si <75%**:
 1. Verificar `AddHttpClientInstrumentation()` para traces de HTTP
-2. Verificar `AddSource("Microsoft.AI.Agents*")` para traces de agentes
+2. Verificar `AddSource("Microsoft.Agents.AI*")` para traces de agentes
 
 ---
 

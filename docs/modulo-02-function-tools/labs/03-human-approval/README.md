@@ -50,8 +50,8 @@ cd ApprovalWorkflow
 ### 1.2 Instalar Paquetes NuGet
 
 ```bash
-dotnet add package Microsoft.AI.Agents --version 1.0.0-preview.260108.1
-dotnet add package Microsoft.AI.Agents.Abstractions --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
 dotnet add package Azure.AI.OpenAI --version 2.0.0
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
@@ -103,8 +103,8 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
 
   <ItemGroup>
     <!-- Microsoft Agent Framework packages -->
-    <PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.AI.Agents.Abstractions" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
     
     <!-- Azure OpenAI -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
@@ -375,7 +375,7 @@ public string SensitiveOperation(string param)
 // Lab: 03-human-approval
 // ============================================================================
 
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;

@@ -49,8 +49,8 @@
 
 **Package References**:
 ```xml
-<PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
-<PackageReference Include="Microsoft.AI.Agents.Abstractions" Version="1.0.0-preview.260108.1" />
+<PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+<PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
 ```
 
 **Agent Types Available**:
@@ -204,7 +204,7 @@ kernel.Plugins.AddFromType<WeatherService>();
 ```csharp
 using Azure;
 using Azure.AI.OpenAI;
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 
 // Recommended configuration approach
 var builder = Kernel.CreateBuilder();
@@ -607,12 +607,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics =>
     {
-        metrics.AddMeter("Microsoft.AI.Agents*"); // MAF metrics
+        metrics.AddMeter("Microsoft.Agents.AI*"); // MAF metrics
         metrics.AddPrometheusExporter(); // Or Azure Monitor
     })
     .WithTracing(tracing =>
     {
-        tracing.AddSource("Microsoft.AI.Agents*"); // MAF traces
+        tracing.AddSource("Microsoft.Agents.AI*"); // MAF traces
         tracing.AddAspNetCoreInstrumentation();
         tracing.AddHttpClientInstrumentation();
         tracing.AddAzureMonitorTraceExporter(); // Send to Azure

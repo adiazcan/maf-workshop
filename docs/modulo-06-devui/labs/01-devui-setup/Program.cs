@@ -5,8 +5,8 @@
 // Lab: 01-devui-setup
 // ============================================================================
 
-using Microsoft.AI.Agents;
-using Microsoft.AI.Agents.DevUI;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.DevUI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

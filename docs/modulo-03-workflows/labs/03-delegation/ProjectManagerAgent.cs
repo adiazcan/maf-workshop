@@ -6,8 +6,8 @@
 // =============================================================================
 
 using System.ComponentModel;
-using Microsoft.AI.Agents;
-using Microsoft.AI.Agents.Chat;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.SemanticKernel;
 
 namespace DelegationWorkflow;
@@ -124,7 +124,7 @@ public class ProjectManagerAgent
             {
                 foreach (var item in message.Items)
                 {
-                    if (item is Microsoft.AI.Agents.Abstractions.FunctionResultContent functionResult)
+                    if (item is Microsoft.Agents.AI.Abstractions.FunctionResultContent functionResult)
                     {
                         selectedAgent = functionResult.Result?.ToString() ?? "";
                     }

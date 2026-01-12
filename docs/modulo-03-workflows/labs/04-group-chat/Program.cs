@@ -12,9 +12,9 @@
 // - Historial de chat compartido
 // =============================================================================
 
-using Microsoft.AI.Agents;
-using Microsoft.AI.Agents.Chat;
-using Microsoft.AI.Agents.Chat.Termination;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
+using Microsoft.Agents.AI.Chat.Termination;
 using Microsoft.Extensions.Configuration;
 
 // =============================================================================

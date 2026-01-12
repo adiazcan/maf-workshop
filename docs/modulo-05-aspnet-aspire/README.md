@@ -86,7 +86,7 @@ graph TD
 **WeatherAgentService.cs**:
 
 ```csharp
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 
 public class WeatherAgentService
 {
@@ -121,7 +121,7 @@ public class WeatherAgentService
 
 ```csharp
 using AgentServices;
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 
 var builder = WebApplication.CreateBuilder(args);
 

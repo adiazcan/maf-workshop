@@ -209,8 +209,8 @@ Microsoft Agent Framework está construido sobre Semantic Kernel:
 
 ```xml
 <!-- Microsoft Agent Framework -->
-<PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
-<PackageReference Include="Microsoft.AI.Agents.Abstractions" Version="1.0.0-preview.260108.1" />
+<PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+<PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
 
 <!-- Azure OpenAI -->
 <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />

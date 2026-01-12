@@ -20,7 +20,7 @@ dotnet --version
 ```bash
 dotnet new console -n MiAgente
 cd MiAgente
-dotnet add package Microsoft.AI.Agents --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 dotnet add package Azure.AI.OpenAI --version 2.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
 ```
@@ -40,7 +40,7 @@ dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-5.2"
 
 ```csharp
 // Program.cs
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.SemanticKernel;
 using Microsoft.Extensions.Configuration;
 
@@ -135,10 +135,10 @@ await groupChat.InvokeAsync("Tema de discusión");
 ```csharp
 builder.Services.AddOpenTelemetry()
     .WithMetrics(m => m
-        .AddMeter("Microsoft.AI.Agents*")
+        .AddMeter("Microsoft.Agents.AI*")
         .AddConsoleExporter())
     .WithTracing(t => t
-        .AddSource("Microsoft.AI.Agents*")
+        .AddSource("Microsoft.Agents.AI*")
         .AddConsoleExporter());
 ```
 
@@ -267,7 +267,7 @@ mi-lab/
 
 | Paquete | Versión |
 |---------|---------|
-| Microsoft.AI.Agents | 1.0.0-preview.260108.1 |
+| Microsoft.Agents.AI | 1.0.0-preview.260108.1 |
 | Azure.AI.OpenAI | 2.0.0 |
 | .NET SDK | 10.0.x |
 | OpenTelemetry | 1.10.0 |

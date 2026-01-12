@@ -224,8 +224,8 @@ var wa = new ChatCompletionAgent();  // Too abbreviated
 
   <ItemGroup>
     <!-- Microsoft Agent Framework packages -->
-    <PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.AI.Agents.Abstractions" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
     
     <!-- Azure OpenAI -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
@@ -304,7 +304,7 @@ cd ProjectName
 
 ```bash
 # NuGet package installation commands
-dotnet add package Microsoft.AI.Agents --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 ```
 
 ## Paso 2: Configuración

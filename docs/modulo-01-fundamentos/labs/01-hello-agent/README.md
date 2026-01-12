@@ -62,10 +62,10 @@ Instala los paquetes necesarios de Microsoft Agent Framework:
 
 ```bash
 # Microsoft Agent Framework (paquete principal)
-dotnet add package Microsoft.AI.Agents --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 
 # Microsoft Agent Framework Abstractions
-dotnet add package Microsoft.AI.Agents.Abstractions --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
 
 # Azure OpenAI SDK
 dotnet add package Azure.AI.OpenAI --version 2.0.0
@@ -87,8 +87,8 @@ Project 'HelloAgent' has the following package references
    [net10.0]:
    Top-level Package                                       Requested
    > Azure.AI.OpenAI                                       2.0.0
-   > Microsoft.AI.Agents                                   1.0.0-preview.260108.1
-   > Microsoft.AI.Agents.Abstractions                      1.0.0-preview.260108.1
+   > Microsoft.Agents.AI                                   1.0.0-preview.260108.1
+   > Microsoft.Agents.AI.Abstractions                      1.0.0-preview.260108.1
    > Microsoft.Extensions.Configuration                    10.0.0
    > Microsoft.Extensions.Configuration.Json               10.0.0
    > Microsoft.Extensions.Configuration.UserSecrets        10.0.0
@@ -179,8 +179,8 @@ Y agrega este `<ItemGroup>` para copiar appsettings.json al output:
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.AI.Agents.Abstractions" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
@@ -212,7 +212,7 @@ Abre `Program.cs` y reemplaza todo el contenido con el siguiente código:
 // Lab: 01-hello-agent
 // ============================================================================
 
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;

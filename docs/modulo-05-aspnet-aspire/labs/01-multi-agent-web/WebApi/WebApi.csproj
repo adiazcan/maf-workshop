@@ -12,7 +12,7 @@
     <PackageReference Include="Aspire.Hosting" Version="9.0.0" />
     
     <!-- Microsoft Agent Framework -->
-    <PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.54.0" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.54.0" />
     

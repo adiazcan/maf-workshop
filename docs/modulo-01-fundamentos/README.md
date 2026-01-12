@@ -127,7 +127,7 @@ Usuario: "Analiza las ventas de enero y crea un resumen ejecutivo"
   3. Devuelve informe al usuario
 ```
 
-*Nota: MCP se cubre en detalle en Módulo 7. A2A se practica en Módulo 2.*
+*Nota: MCP se cubre en detalle en Módulo 7.*
 
 ### Configuración de Azure OpenAI
 
@@ -149,7 +149,7 @@ Para que los agentes funcionen, necesitas:
 ### Anatomía de un Agente Simple
 
 ```csharp
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Azure.AI.OpenAI;
 
 // 1. Configurar el cliente de Azure OpenAI

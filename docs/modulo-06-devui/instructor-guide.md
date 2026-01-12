@@ -78,7 +78,7 @@ devui start --port 5100
 
 | Problema | Señales | Solución Rápida |
 |----------|---------|-----------------|
-| DevUI no instalado | "devui: command not found" | `dotnet tool install -g Microsoft.AI.Agents.DevUI` |
+| DevUI no instalado | "devui: command not found" | `dotnet tool install -g Microsoft.Agents.AI.DevUI` |
 | Puerto ocupado | "Address already in use" | Cambiar a puerto 5101 |
 | Sin function calls | Solo mensajes, no funciones | Verificar `AddSingleton(kernel)` |
 | Firewall Windows | Popup de seguridad | Permitir acceso de red |

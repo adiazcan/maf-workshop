@@ -71,7 +71,7 @@
 ### Module 1: Lab 01-hello-agent
 
 - [X] T021 [US1] Create lab folder `docs/modulo-01-fundamentos/labs/01-hello-agent/` with README.md following workshop content format
-- [X] T022 [US1] Create complete C# solution in `docs/modulo-01-fundamentos/labs/01-hello-agent/HelloAgent.csproj` targeting net10.0 with Microsoft.AI.Agents 1.0.0-preview.260108.1
+- [X] T022 [US1] Create complete C# solution in `docs/modulo-01-fundamentos/labs/01-hello-agent/HelloAgent.csproj` targeting net10.0 with Microsoft.Agents.AI 1.0.0-preview.260108.1
 - [X] T023 [US1] Implement Program.cs with ChatCompletionAgent connecting to Azure OpenAI, complete Spanish comments, handles basic greeting conversation
 - [X] T024 [US1] Create appsettings.json with Azure OpenAI endpoint/deployment configuration (no secrets)
 - [X] T025 [US1] Write lab instructions in `docs/modulo-01-fundamentos/labs/01-hello-agent/README.md` with 6 steps: preparation, package installation, configuration, implementation, execution, validation (Spanish, 15 min duration)
@@ -333,7 +333,7 @@
 - [X] T131 [P] Create `docs/reference.md` with links to official Microsoft Agent Framework docs, Azure OpenAI docs, sample repositories
 - [X] T132 [P] Review all theory documentation for consistency in tone, terminology translation, formatting standards per `contracts/workshop-content-format.md`, and content depth (minimum 3 code examples per theory doc, 1 Mermaid diagram per module)
 - [X] T133 [P] Validate all C# code examples compile and run on .NET 10 (Windows, macOS, Linux test matrix)
-- [X] T134 [P] Verify all NuGet package versions are consistent across labs: Microsoft.AI.Agents 1.0.0-preview.260108.1
+- [X] T134 [P] Verify all NuGet package versions are consistent across labs: Microsoft.Agents.AI 1.0.0-preview.260108.1
 - [X] T135 [P] Check all appsettings.json files do NOT contain secrets (API keys), user-secrets instructions present in all labs
 - [X] T135b [P] Audit all labs for Azure OpenAI Service exclusivity: verify no local models, no OpenAI direct API, no alternative providers (constitution compliance)
 - [X] T136 [P] Validate all lab instructions follow standard format from `contracts/workshop-content-format.md` (heading structure, paso numbering, validation checkpoints)
@@ -531,7 +531,7 @@ Given workshop requirements for progressive learning:
 
 ## Notes
 
-- All C# code must target .NET 10 with Microsoft.AI.Agents 1.0.0-preview.260108.1
+- All C# code must target .NET 10 with Microsoft.Agents.AI 1.0.0-preview.260108.1
 - All documentation, comments, and instructions MUST be in Spanish per spec requirement
 - All labs MUST include complete copy-paste ready code (no participant coding required)
 - All modules MUST have manual instructor validation checkpoints per spec

@@ -86,7 +86,7 @@ Aplicación que **consume** resources y tools de MCP Servers.
 **Ejemplo**: Microsoft Agent Framework actuando como cliente MCP
 
 ```csharp
-using Microsoft.AI.Agents.MCP;
+using Microsoft.Agents.AI.MCP;
 
 // Conectar a MCP Server
 var mcpClient = new MCPClient("http://localhost:3000/mcp");
@@ -198,7 +198,7 @@ MCP Server de "Gestión de Inventario"
 Microsoft Agent Framework incluye soporte nativo para MCP:
 
 ```csharp
-using Microsoft.AI.Agents.MCP;
+using Microsoft.Agents.AI.MCP;
 
 // Opción 1: Conectar a MCP Server HTTP
 var mcpClient = new MCPClient(new Uri("https://api.example.com/mcp"));

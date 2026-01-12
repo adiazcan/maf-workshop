@@ -13,8 +13,8 @@
 // =============================================================================
 
 using System.Diagnostics;
-using Microsoft.AI.Agents;
-using Microsoft.AI.Agents.Chat;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
 
 // =============================================================================

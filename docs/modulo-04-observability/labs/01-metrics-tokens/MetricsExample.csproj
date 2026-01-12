@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <!-- Microsoft Agent Framework -->
-    <PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
     
     <!-- Azure OpenAI SDK -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />

@@ -5,7 +5,7 @@
 // y bien estructurados de textos largos.
 // =============================================================================
 
-using Microsoft.AI.Agents.Chat;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;

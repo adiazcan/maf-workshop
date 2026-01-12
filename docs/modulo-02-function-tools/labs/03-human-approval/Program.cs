@@ -5,7 +5,7 @@
 // Lab: 03-human-approval
 // ============================================================================
 
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;

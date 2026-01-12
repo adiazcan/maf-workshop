@@ -51,8 +51,8 @@ cd WeatherAgent
 
 ```bash
 # Microsoft Agent Framework
-dotnet add package Microsoft.AI.Agents --version 1.0.0-preview.260108.1
-dotnet add package Microsoft.AI.Agents.Abstractions --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
 
 # Azure OpenAI
 dotnet add package Azure.AI.OpenAI --version 2.0.0
@@ -117,8 +117,8 @@ Edita `WeatherAgent.csproj` para que quede así:
 
   <ItemGroup>
     <!-- Microsoft Agent Framework packages -->
-    <PackageReference Include="Microsoft.AI.Agents" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.AI.Agents.Abstractions" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
     
     <!-- Azure OpenAI -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
@@ -304,7 +304,7 @@ Reemplaza el contenido de `Program.cs`:
 // Lab: 01-custom-tool
 // ============================================================================
 
-using Microsoft.AI.Agents;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;

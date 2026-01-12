@@ -92,13 +92,13 @@ graph LR
 
 ```bash
 # Instalar DevUI tool globalmente
-dotnet tool install -g Microsoft.AI.Agents.DevUI
+dotnet tool install -g Microsoft.Agents.AI.DevUI
 ```
 
 #### Configuración en tu Aplicación
 
 ```csharp
-using Microsoft.AI.Agents.DevUI;
+using Microsoft.Agents.AI.DevUI;
 
 var builder = WebApplication.CreateBuilder(args);
 

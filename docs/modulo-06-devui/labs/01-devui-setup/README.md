@@ -43,7 +43,7 @@ DevUI es una herramienta de línea de comandos que se instala globalmente:
 
 ```bash
 # Instalar la herramienta DevUI globalmente
-dotnet tool install -g Microsoft.AI.Agents.DevUI
+dotnet tool install -g Microsoft.Agents.AI.DevUI
 
 # Verificar instalación
 devui --version
@@ -51,7 +51,7 @@ devui --version
 
 **Salida esperada**:
 ```
-Microsoft.AI.Agents.DevUI version 1.0.0-preview.260108.1
+Microsoft.Agents.AI.DevUI version 1.0.0-preview.260108.1
 ```
 
 ### 1.2 Crear Proyecto
@@ -70,11 +70,11 @@ cd DevUIExample
 
 ```bash
 # Microsoft Agent Framework
-dotnet add package Microsoft.AI.Agents --version 1.0.0-preview.260108.1
-dotnet add package Microsoft.AI.Agents.Abstractions --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
 
 # DevUI integration
-dotnet add package Microsoft.AI.Agents.DevUI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.DevUI --version 1.0.0-preview.260108.1
 
 # Azure OpenAI
 dotnet add package Azure.AI.OpenAI --version 2.0.0
@@ -290,8 +290,8 @@ Reemplaza el contenido de `Program.cs`:
 // Lab: 01-devui-setup
 // ============================================================================
 
-using Microsoft.AI.Agents;
-using Microsoft.AI.Agents.DevUI;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.DevUI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

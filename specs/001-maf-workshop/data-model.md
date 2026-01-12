@@ -199,7 +199,7 @@ Represents a complete C# code file or project that participants will use.
   "commentLanguage": "es",
   "nugetPackages": [
     {
-      "name": "Microsoft.AI.Agents",
+      "name": "Microsoft.Agents.AI",
       "version": "1.0.0-preview.260108.1"
     },
     {
@@ -355,7 +355,7 @@ Individual step within a lab exercise.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | ✅ | Package name (e.g., "Microsoft.AI.Agents") |
+| `name` | string | ✅ | Package name (e.g., "Microsoft.Agents.AI") |
 | `version` | string | ✅ | Version string (e.g., "1.35.0") |
 | `isPreview` | boolean | ✅ | Whether version is preview/alpha |
 | `purpose` | string | ✅ | Why this package is needed (Spanish) |

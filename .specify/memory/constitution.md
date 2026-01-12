@@ -54,7 +54,7 @@
 ### Code Quality
 
 - Target framework: net10.0 exclusively
-- Microsoft.AI.Agents version: 1.0.0-preview.260108.1 (consistent across all labs)
+- Microsoft.Agents.AI version: 1.0.0-preview.260108.1 (consistent across all labs)
 - Spanish comments mandatory: file header, section markers, non-obvious logic
 
 ### Timing Accuracy
