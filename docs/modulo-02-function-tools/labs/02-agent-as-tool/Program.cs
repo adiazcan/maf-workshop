@@ -5,9 +5,10 @@
 // Lab: 02-agent-as-tool
 // ============================================================================
 
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Abstractions;
-using Microsoft.Agents.AI.Chat;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 // ===== Configuración =====
@@ -21,12 +22,17 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("AzureOpenAI:Endpoint no configurado");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("AzureOpenAI:DeploymentName no configurado");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
+
+// ===== Crear cliente de Azure OpenAI =====
+var chatClient = new AzureOpenAIClient(
+    new Uri(endpoint),
+    new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
 // ===== Crear Agente Especializado: Calculadora =====
 // Este agente se dedicará exclusivamente a operaciones matemáticas
-var calculatorAgent = new ChatCompletionAgent(
+AIAgent calculatorAgent = chatClient.CreateAIAgent(
     name: "CalculadoraExperta",
     instructions: """
         Eres un experto matemático llamado CalculadoraExperta.
@@ -45,43 +51,24 @@ var calculatorAgent = new ChatCompletionAgent(
         - Ecuaciones simples
         - Conversiones de unidades
         - Estadísticas básicas (promedio, mediana)
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
+        """
 );
 
 Console.WriteLine("✓ CalculadoraExperta creada - Agente especializado en matemáticas");
 
-// ===== Crear Función que Invoca al Agente Calculadora =====
-// Esta función será usada por el agente principal para delegar tareas matemáticas
-var calculateFunction = AIFunctionFactory.Create(
-    async (string mathQuestion) =>
+// ===== Crear Función que Invoca al Agente Calculadora (Agent-as-Tool) =====
+// Usamos AsAIFunction para exponer el agente como una herramienta
+var calculateFunction = calculatorAgent.AsAIFunction(
+    new AIFunctionFactoryOptions
     {
-        Console.WriteLine($"\n   📊 [Delegando a CalculadoraExperta]: {mathQuestion}");
-        
-        // Crear historial temporal para esta consulta
-        var chat = new ChatHistory();
-        chat.AddUserMessage(mathQuestion);
-        
-        // Invocar el agente especializado
-        string result = "";
-        await foreach (var message in calculatorAgent.InvokeAsync(chat))
-        {
-            result += message.Content;
-        }
-        
-        Console.WriteLine($"   📊 [CalculadoraExperta respondió]: {result.Substring(0, Math.Min(50, result.Length))}...\n");
-        
-        return result;
-    },
-    name: "calculate",
-    description: "Resuelve problemas matemáticos complejos. Usa esta función cuando el usuario tenga preguntas sobre cálculos, matemáticas, porcentajes, ecuaciones o estadísticas."
+        Name = "calculate",
+        Description = "Resuelve problemas matemáticos complejos. Usa esta función cuando el usuario tenga preguntas sobre cálculos, matemáticas, porcentajes, ecuaciones o estadísticas."
+    }
 );
 
 // ===== Crear Agente Principal =====
 // Este agente usa la función calculate para delegar tareas matemáticas
-var mainAgent = new ChatCompletionAgent(
+AIAgent mainAgent = chatClient.CreateAIAgent(
     name: "AsistenteGeneral",
     instructions: """
         Eres un asistente general llamado AsistenteGeneral.
@@ -96,16 +83,13 @@ var mainAgent = new ChatCompletionAgent(
         Siempre responde en español de forma amigable.
         Cuando delegues a la calculadora, presenta los resultados de forma clara.
         """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey,
-    tools: new AIFunction[] { calculateFunction }
+    tools: [calculateFunction]
 );
 
 Console.WriteLine("✓ AsistenteGeneral creado - Agente coordinador con delegación");
 
-// ===== Historial de Conversación =====
-var chatHistory = new ChatHistory();
+// ===== Crear Thread para la conversación =====
+var thread = mainAgent.GetNewThread();
 
 // ===== Interfaz de Usuario =====
 Console.WriteLine("\n============================================");
@@ -137,15 +121,14 @@ while (true)
         break;
     }
     
-    chatHistory.AddUserMessage(userInput);
-    
     Console.Write($"🤖 {mainAgent.Name}: ");
     
     try
     {
-        await foreach (var message in mainAgent.InvokeAsync(chatHistory))
+        // Invocar el agente - automáticamente decidirá si llamar a CalculadoraExperta
+        await foreach (var update in mainAgent.RunStreamingAsync(userInput, thread))
         {
-            Console.Write(message.Content);
+            Console.Write(update);
         }
         Console.WriteLine("\n");
     }
@@ -156,16 +139,5 @@ while (true)
     catch (Exception ex)
     {
         Console.WriteLine($"\n❌ Error: {ex.Message}\n");
-    }
-    
-    // Gestión de historial
-    if (chatHistory.Count > 10)
-    {
-        var messagesToKeep = chatHistory.Skip(chatHistory.Count - 10).ToList();
-        chatHistory.Clear();
-        foreach (var msg in messagesToKeep)
-        {
-            chatHistory.Add(msg);
-        }
     }
 }

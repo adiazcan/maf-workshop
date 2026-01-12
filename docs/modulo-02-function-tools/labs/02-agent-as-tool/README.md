@@ -29,7 +29,8 @@ Al finalizar, tendrás un sistema donde el agente principal automáticamente del
 
 ### Configuración de Azure
 - ✅ Azure OpenAI Service con deployment de `gpt-5.2`
-- ✅ Endpoint y API Key disponibles
+- ✅ Endpoint configurado
+- ✅ Credenciales de Azure configuradas (para `DefaultAzureCredential`)
 
 ---
 
@@ -48,6 +49,9 @@ cd AgentComposition
 
 ```bash
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
+dotnet add package Microsoft.Agents.AI.OpenAI --version 1.0.0-preview.260108.1
+dotnet add package Azure.AI.OpenAI --version 2.1.0
+dotnet add package Azure.Identity --version 1.13.0
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
@@ -68,11 +72,18 @@ dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0
 }
 ```
 
-### 2.2 Configurar User Secrets
+### 2.2 Configurar Autenticación de Azure
+
+Este lab usa `DefaultAzureCredential` para autenticación. Asegúrate de tener una de estas opciones configuradas:
 
 ```bash
-dotnet user-secrets init
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
+# Opción 1: Azure CLI (recomendado para desarrollo)
+az login
+
+# Opción 2: Variables de entorno
+export AZURE_CLIENT_ID="tu-client-id"
+export AZURE_CLIENT_SECRET="tu-client-secret"
+export AZURE_TENANT_ID="tu-tenant-id"
 ```
 
 ### 2.3 Actualizar .csproj
@@ -89,8 +100,15 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft Agent Framework package -->
+    <!-- Microsoft Agent Framework packages -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.260108.1" />
+    
+    <!-- Azure OpenAI SDK -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    
+    <!-- Azure Identity para autenticación -->
+    <PackageReference Include="Azure.Identity" Version="1.13.0" />
     
     <!-- Configuration -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
@@ -113,12 +131,13 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
 
 ### 3.1 Reemplazar Program.cs
 
-El enfoque con Microsoft Agent Framework es más directo - todo se define en un solo archivo:
+El enfoque con Microsoft Agent Framework utiliza el patrón `AsAIFunction` para exponer agentes como herramientas:
 
 ```csharp
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Abstractions;
-using Microsoft.Agents.AI.Chat;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 // ===== Configuración =====
@@ -132,12 +151,17 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("AzureOpenAI:Endpoint no configurado");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("AzureOpenAI:DeploymentName no configurado");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
+
+// ===== Crear cliente de Azure OpenAI =====
+var chatClient = new AzureOpenAIClient(
+    new Uri(endpoint),
+    new DefaultAzureCredential())
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
 // ===== Crear Agente Especializado: Calculadora =====
 // Este agente se dedicará exclusivamente a operaciones matemáticas
-var calculatorAgent = new ChatCompletionAgent(
+AIAgent calculatorAgent = chatClient.CreateAIAgent(
     name: "CalculadoraExperta",
     instructions: """
         Eres un experto matemático llamado CalculadoraExperta.
@@ -156,43 +180,24 @@ var calculatorAgent = new ChatCompletionAgent(
         - Ecuaciones simples
         - Conversiones de unidades
         - Estadísticas básicas (promedio, mediana)
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
+        """
 );
 
 Console.WriteLine("✓ CalculadoraExperta creada - Agente especializado en matemáticas");
 
-// ===== Crear Función que Invoca al Agente Calculadora =====
-// Esta función será usada por el agente principal para delegar tareas matemáticas
-var calculateFunction = AIFunctionFactory.Create(
-    async (string mathQuestion) =>
+// ===== Crear Función que Invoca al Agente Calculadora (Agent-as-Tool) =====
+// Usamos AsAIFunction para exponer el agente como una herramienta
+var calculateFunction = calculatorAgent.AsAIFunction(
+    new AIFunctionFactoryOptions
     {
-        Console.WriteLine($"\n   📊 [Delegando a CalculadoraExperta]: {mathQuestion}");
-        
-        // Crear historial temporal para esta consulta
-        var chat = new ChatHistory();
-        chat.AddUserMessage(mathQuestion);
-        
-        // Invocar el agente especializado
-        string result = "";
-        await foreach (var message in calculatorAgent.InvokeAsync(chat))
-        {
-            result += message.Content;
-        }
-        
-        Console.WriteLine($"   📊 [CalculadoraExperta respondió]: {result.Substring(0, Math.Min(50, result.Length))}...\n");
-        
-        return result;
-    },
-    name: "calculate",
-    description: "Resuelve problemas matemáticos complejos. Usa esta función cuando el usuario tenga preguntas sobre cálculos, matemáticas, porcentajes, ecuaciones o estadísticas."
+        Name = "calculate",
+        Description = "Resuelve problemas matemáticos complejos. Usa esta función cuando el usuario tenga preguntas sobre cálculos, matemáticas, porcentajes, ecuaciones o estadísticas."
+    }
 );
 
 // ===== Crear Agente Principal =====
 // Este agente usa la función calculate para delegar tareas matemáticas
-var mainAgent = new ChatCompletionAgent(
+AIAgent mainAgent = chatClient.CreateAIAgent(
     name: "AsistenteGeneral",
     instructions: """
         Eres un asistente general llamado AsistenteGeneral.
@@ -207,16 +212,13 @@ var mainAgent = new ChatCompletionAgent(
         Siempre responde en español de forma amigable.
         Cuando delegues a la calculadora, presenta los resultados de forma clara.
         """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey,
-    tools: new AIFunction[] { calculateFunction }
+    tools: [calculateFunction]
 );
 
 Console.WriteLine("✓ AsistenteGeneral creado - Agente coordinador con delegación");
 
-// ===== Historial de Conversación =====
-var chatHistory = new ChatHistory();
+// ===== Crear Thread para la conversación =====
+var thread = mainAgent.GetNewThread();
 
 // ===== Interfaz de Usuario =====
 Console.WriteLine("\n============================================");
@@ -248,15 +250,14 @@ while (true)
         break;
     }
     
-    chatHistory.AddUserMessage(userInput);
-    
     Console.Write($"🤖 {mainAgent.Name}: ");
     
     try
     {
-        await foreach (var message in mainAgent.InvokeAsync(chatHistory))
+        // Invocar el agente - automáticamente decidirá si llamar a CalculadoraExperta
+        await foreach (var update in mainAgent.RunStreamingAsync(userInput, thread))
         {
-            Console.Write(message.Content);
+            Console.Write(update);
         }
         Console.WriteLine("\n");
     }
@@ -268,38 +269,19 @@ while (true)
     {
         Console.WriteLine($"\n❌ Error: {ex.Message}\n");
     }
-    
-    // Gestión de historial
-    if (chatHistory.Count > 10)
-    {
-        var messagesToKeep = chatHistory.Skip(chatHistory.Count - 10).ToList();
-        chatHistory.Clear();
-        foreach (var msg in messagesToKeep)
-        {
-            chatHistory.Add(msg);
-        }
-    }
 }
 ```
 
-### 3.2 La Técnica Clave: AIFunctionFactory con Agentes
+### 3.2 La Técnica Clave: AsAIFunction
 
 ```csharp
-var calculateFunction = AIFunctionFactory.Create(
-    async (string mathQuestion) =>
+// El método AsAIFunction convierte un agente completo en una función invocable
+var calculateFunction = calculatorAgent.AsAIFunction(
+    new AIFunctionFactoryOptions
     {
-        var chat = new ChatHistory();
-        chat.AddUserMessage(mathQuestion);
-        
-        string result = "";
-        await foreach (var message in calculatorAgent.InvokeAsync(chat))
-        {
-            result += message.Content;
-        }
-        return result;
-    },
-    name: "calculate",
-    description: "Resuelve problemas matemáticos..."
+        Name = "calculate",
+        Description = "Resuelve problemas matemáticos..."
+    }
 );
 ```
 
@@ -307,6 +289,7 @@ var calculateFunction = AIFunctionFactory.Create(
 - El agente principal puede llamar a `calculate`
 - La función invoca internamente a `calculatorAgent`
 - El resultado se devuelve al agente principal
+- MAF maneja automáticamente la serialización y el contexto
 
 ---
 
@@ -349,16 +332,12 @@ Escribe 'salir' para terminar
 **Prueba 1: Pregunta matemática (DEBE delegar)**
 ```
 👤 Tú: ¿Cuánto es 15% de 850?
-
-   📊 [Delegando a CalculadoraExperta]: ¿Cuánto es 15% de 850?
-   📊 [CalculadoraExperta respondió]: Para calcular el 15% de 850:...
-
 🤖 AsistenteGeneral: El 15% de 850 es 127.5. 
 
 El cálculo es: 850 × (15/100) = 850 × 0.15 = 127.5
 ```
 
-**Observa**: Aparece el log `[Delegando a CalculadoraExperta]` - ¡la delegación funcionó!
+**Observa**: El agente principal delegó automáticamente a CalculadoraExperta usando la función `calculate`.
 
 **Prueba 2: Pregunta general (NO debe delegar)**
 ```
@@ -366,7 +345,7 @@ El cálculo es: 850 × (15/100) = 850 × 0.15 = 127.5
 🤖 AsistenteGeneral: La capital de España es Madrid.
 ```
 
-**Observa**: No aparece ningún log de delegación - el agente principal respondió directamente.
+**Observa**: El agente principal respondió directamente sin usar la función `calculate`.
 
 ---
 
@@ -375,8 +354,8 @@ El cálculo es: 850 × (15/100) = 850 × 0.15 = 127.5
 ### ✅ Checkpoint: Verificación de Agent-as-Tool
 
 - [ ] ✅ El programa muestra ambos agentes al iniciar
-- [ ] ✅ Preguntas matemáticas activan el log `[Delegando a CalculadoraExperta]`
-- [ ] ✅ Preguntas generales NO activan el log de delegación
+- [ ] ✅ Preguntas matemáticas son procesadas por CalculadoraExperta (delegación vía `AsAIFunction`)
+- [ ] ✅ Preguntas generales son respondidas directamente por AsistenteGeneral
 - [ ] ✅ El AsistenteGeneral presenta los resultados matemáticos de forma clara
 - [ ] ✅ Ambos agentes responden en español
 
@@ -392,14 +371,30 @@ El cálculo es: 850 × (15/100) = 850 × 0.15 = 127.5
 
 **Solución**: Mejora la descripción para ser más específica:
 ```csharp
-description: "OBLIGATORIO usar para CUALQUIER cálculo numérico, porcentaje, promedio, suma, resta, multiplicación, división, o problema matemático de cualquier tipo."
+var calculateFunction = calculatorAgent.AsAIFunction(
+    new AIFunctionFactoryOptions
+    {
+        Name = "calculate",
+        Description = "OBLIGATORIO usar para CUALQUIER cálculo numérico, porcentaje, promedio, suma, resta, multiplicación, división, o problema matemático de cualquier tipo."
+    }
+);
+```
+
+### Error de autenticación
+
+**Síntoma**: Error de credenciales o 401 Unauthorized.
+
+**Solución**: Verifica que `az login` esté activo o las variables de entorno estén configuradas:
+```bash
+az login
+az account show  # Verificar que estás logueado
 ```
 
 ### Error de conexión
 
-**Síntoma**: Error 401 o timeout.
+**Síntoma**: Error de conexión o timeout.
 
-**Solución**: Verifica endpoint, API key y deployment name.
+**Solución**: Verifica endpoint y deployment name en appsettings.json.
 
 ---
 
@@ -407,10 +402,11 @@ description: "OBLIGATORIO usar para CUALQUIER cálculo numérico, porcentaje, pr
 
 En este laboratorio aprendiste:
 
-✅ **Crear agentes especializados** con `ChatCompletionAgent`  
-✅ **Convertir agentes en funciones** con `AIFunctionFactory.Create`  
+✅ **Crear agentes especializados** con `CreateAIAgent`  
+✅ **Convertir agentes en funciones** con `AsAIFunction`  
 ✅ **Componer sistemas multi-agente** donde el coordinador delega automáticamente  
 ✅ **El poder del patrón agent-as-tool** para modularidad y escalabilidad
+✅ **Usar `DefaultAzureCredential`** para autenticación segura
 
 ### Diagrama del Flujo
 
