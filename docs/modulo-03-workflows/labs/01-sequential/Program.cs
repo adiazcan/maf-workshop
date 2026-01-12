@@ -1,13 +1,13 @@
 // =============================================================================
 // Program.cs - Workflow Secuencial con Microsoft Agent Framework
 // =============================================================================
-// Descripción: Este ejemplo implementa un pipeline de 3 pasos donde cada agente
-// procesa el resultado del agente anterior: ResearchAgent → WritingAgent → ReviewAgent
+// Descripción: Pipeline de 3 pasos donde cada agente procesa el resultado
+// del agente anterior: ResearchAgent → WritingAgent → ReviewAgent
 //
-// Conceptos demostrados:
-// - Creación de múltiples agentes especializados
-// - Paso de resultados entre agentes en secuencia
-// - Orquestación manual de flujo secuencial
+// Conceptos de Microsoft Agent Framework (MAF) demostrados:
+// - ChatCompletionAgent: Agente que usa modelos de chat para completar tareas
+// - ChatHistory: Historial de conversación para cada agente
+// - InvokeAsync: Invocación asíncrona con streaming de respuestas
 // =============================================================================
 
 using Microsoft.Agents.AI;
@@ -35,11 +35,20 @@ var apiKey = configuration["AzureOpenAI:ApiKey"]
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("         WORKFLOW SECUENCIAL: Research → Write → Review");
+Console.WriteLine("           Usando Microsoft Agent Framework (MAF)");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 2: Crear agentes especializados
+// PASO 2: Crear agentes especializados con Microsoft Agent Framework
+// =============================================================================
+// ChatCompletionAgent es el tipo principal de agente en MAF.
+// Cada agente tiene:
+// - name: Identificador único del agente
+// - instructions: Prompt del sistema que define su comportamiento
+// - endpoint: URL del servicio Azure OpenAI
+// - modelId: Nombre del deployment del modelo
+// - apiKey: Clave de API para autenticación
 // =============================================================================
 
 // Agente 1: Investigador - Recopila información sobre un tema
@@ -120,7 +129,11 @@ Console.WriteLine("════════════════════�
 Console.WriteLine();
 
 // =============================================================================
-// PASO 4: Ejecutar workflow secuencial
+// PASO 4: Ejecutar workflow secuencial con MAF
+// =============================================================================
+// En Microsoft Agent Framework, cada agente se invoca con InvokeAsync()
+// pasando un ChatHistory. El workflow secuencial pasa el resultado de un
+// agente al siguiente incluyéndolo en el prompt del siguiente ChatHistory.
 // =============================================================================
 
 // --- PASO 4.1: Research ---
@@ -128,11 +141,11 @@ Console.WriteLine("┌───────────────────�
 Console.WriteLine("│ PASO 1/3: ResearchAgent - Investigando tema...                  │");
 Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-// Crear historial de chat para el investigador
+// ChatHistory almacena la conversación con el agente (concepto clave de MAF)
 var researchChat = new ChatHistory();
 researchChat.AddUserMessage($"Investiga el siguiente tema: {topic}");
 
-// Invocar al agente de investigación
+// InvokeAsync retorna un IAsyncEnumerable para streaming de respuestas
 string researchResult = "";
 await foreach (var message in researchAgent.InvokeAsync(researchChat))
 {
@@ -150,7 +163,8 @@ Console.WriteLine("┌───────────────────�
 Console.WriteLine("│ PASO 2/3: WritingAgent - Escribiendo artículo...                │");
 Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-// Crear historial de chat para el escritor, pasando el resultado anterior
+// Nuevo ChatHistory para el escritor - pasamos el resultado anterior en el prompt
+// Este patrón de "inyección de contexto" es fundamental en workflows secuenciales
 var writingChat = new ChatHistory();
 writingChat.AddUserMessage($"""
     Basándote en la siguiente investigación, escribe un artículo completo:
@@ -162,7 +176,7 @@ writingChat.AddUserMessage($"""
     Escribe el artículo ahora.
     """);
 
-// Invocar al agente de escritura
+// Invocar al agente de escritura usando MAF
 string writingResult = "";
 await foreach (var message in writingAgent.InvokeAsync(writingChat))
 {
@@ -180,7 +194,7 @@ Console.WriteLine("┌───────────────────�
 Console.WriteLine("│ PASO 3/3: ReviewAgent - Revisando y mejorando...                │");
 Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-// Crear historial de chat para el revisor, pasando el artículo
+// Nuevo ChatHistory para el revisor - recibe el artículo del paso anterior
 var reviewChat = new ChatHistory();
 reviewChat.AddUserMessage($"""
     Revisa y mejora el siguiente artículo:
@@ -192,7 +206,7 @@ reviewChat.AddUserMessage($"""
     Proporciona la versión final mejorada y un resumen de cambios.
     """);
 
-// Invocar al agente de revisión
+// Invocar al agente de revisión usando MAF
 string reviewResult = "";
 await foreach (var message in reviewAgent.InvokeAsync(reviewChat))
 {
