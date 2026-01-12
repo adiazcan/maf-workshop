@@ -29,9 +29,12 @@ Al finalizar, tendrás un agente funcional y comprenderás los componentes funda
 
 ### Configuración de Azure
 - ✅ Azure OpenAI Service con deployment de `gpt-5.2`
-- ✅ Endpoint y API Key disponibles
+- ✅ Endpoint de Azure OpenAI disponible
+- ✅ Autenticación configurada (Azure CLI `az login` o Managed Identity)
 
 **Si no has configurado Azure**: Consulta la [Guía de Instalación](../../instalacion.md)
+
+> **Nota**: Este laboratorio usa `DefaultAzureCredential` para autenticación, que automáticamente detecta credenciales de Azure CLI, Managed Identity, o variables de entorno. No necesitas manejar API Keys manualmente.
 
 ---
 
@@ -64,13 +67,18 @@ Instala los paquetes necesarios de Microsoft Agent Framework:
 # Microsoft Agent Framework (paquete principal)
 dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 
-# Microsoft Agent Framework Abstractions
-dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
+# Microsoft Agent Framework para OpenAI
+dotnet add package Microsoft.Agents.AI.OpenAI --version 1.0.0-preview.260108.1
+
+# Azure OpenAI Client
+dotnet add package Azure.AI.OpenAI --version 2.1.0
+
+# Azure Identity (para DefaultAzureCredential)
+dotnet add package Azure.Identity --version 1.13.0
 
 # Configuración (.NET Configuration System)
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
-dotnet add package Microsoft.Extensions.Configuration.UserSecrets --version 10.0.0
 ```
 
 **Verificar paquetes instalados**:
@@ -83,11 +91,12 @@ dotnet list package
 Project 'HelloAgent' has the following package references
    [net10.0]:
    Top-level Package                                       Requested
+   > Azure.AI.OpenAI                                       2.1.0
+   > Azure.Identity                                        1.13.0
    > Microsoft.Agents.AI                                   1.0.0-preview.260108.1
-   > Microsoft.Agents.AI.Abstractions                      1.0.0-preview.260108.1
+   > Microsoft.Agents.AI.OpenAI                            1.0.0-preview.260108.1
    > Microsoft.Extensions.Configuration                    10.0.0
    > Microsoft.Extensions.Configuration.Json               10.0.0
-   > Microsoft.Extensions.Configuration.UserSecrets        10.0.0
 ```
 
 ---
@@ -102,15 +111,7 @@ Crea un archivo `appsettings.json` en la raíz del proyecto:
 {
   "AzureOpenAI": {
     "Endpoint": "https://TU-RECURSO-NOMBRE.openai.azure.com/",
-    "DeploymentName": "gpt-5.2",
-    "MaxTokens": 2000,
-    "Temperature": 0.7
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft": "Warning"
-    }
+    "DeploymentName": "gpt-5.2"
   }
 }
 ```
@@ -118,41 +119,30 @@ Crea un archivo `appsettings.json` en la raíz del proyecto:
 **⚠️ IMPORTANTE**: 
 - Reemplaza `TU-RECURSO-NOMBRE` con el nombre de tu recurso de Azure OpenAI
 - Verifica que `DeploymentName` coincida con el nombre de tu deployment
-- **NO** incluyas tu API Key aquí (lo haremos en el siguiente paso de forma segura)
+- **NO necesitas API Key**: Usamos `DefaultAzureCredential` que detecta automáticamente tus credenciales
 
-### 2.2 Configurar User Secrets (API Key)
+### 2.2 Autenticación con Azure CLI
 
-Los **user secrets** te permiten guardar credenciales de forma segura sin incluirlas en el código fuente:
+La forma más sencilla de autenticarse es usando Azure CLI:
 
 ```bash
-# Inicializar user secrets para el proyecto
-dotnet user-secrets init
+# Iniciar sesión en Azure
+az login
 
-# Guardar tu API Key de Azure OpenAI
-dotnet user-secrets set "AzureOpenAI:ApiKey" "TU-API-KEY-AQUI"
+# Verificar que estás conectado
+az account show
 ```
 
-**Reemplaza `TU-API-KEY-AQUI`** con tu API Key real de Azure (la copiaste en la guía de instalación).
-
-**Verificar que se guardó correctamente**:
-```bash
-dotnet user-secrets list
-```
-
-**Salida esperada**:
-```
-AzureOpenAI:ApiKey = sk-...tu-key...
-```
+**Nota**: `DefaultAzureCredential` intentará automáticamente múltiples métodos de autenticación:
+1. Variables de entorno (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`)
+2. Managed Identity (cuando se ejecuta en Azure)
+3. Azure CLI (`az login`)
+4. Azure PowerShell
+5. Visual Studio / VS Code credentials
 
 ### 2.3 Actualizar .csproj para incluir appsettings.json
 
-Edita `HelloAgent.csproj` y agrega esta línea dentro del `<PropertyGroup>`:
-
-```xml
-<UserSecretsId>maf-workshop-hello-agent-01</UserSecretsId>
-```
-
-Y agrega este `<ItemGroup>` para copiar appsettings.json al output:
+Edita `HelloAgent.csproj` y agrega este `<ItemGroup>` para copiar appsettings.json al output:
 
 ```xml
 <ItemGroup>
@@ -171,15 +161,15 @@ Y agrega este `<ItemGroup>` para copiar appsettings.json al output:
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UserSecretsId>maf-workshop-hello-agent-01</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <PackageReference Include="Azure.Identity" Version="1.13.0" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.260108.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -207,16 +197,17 @@ Abre `Program.cs` y reemplaza todo el contenido con el siguiente código:
 // Lab: 01-hello-agent
 // ============================================================================
 
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
+using OpenAI.Chat;
 
 // ===== Configuración =====
-// Cargar configuración desde appsettings.json y user secrets
+// Cargar configuración desde appsettings.json
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddUserSecrets<Program>()  // Cargar API key desde user secrets
     .Build();
 
 // Obtener valores de configuración
@@ -224,27 +215,32 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("AzureOpenAI:Endpoint no configurado");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("AzureOpenAI:DeploymentName no configurado");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
+
+// ===== Crear Cliente de Azure OpenAI =====
+// Usamos DefaultAzureCredential que automáticamente detecta credenciales:
+// - Variables de entorno (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+// - Managed Identity (cuando se ejecuta en Azure)
+// - Azure CLI (az login)
+// - Visual Studio / VS Code credentials
+var credential = new DefaultAzureCredential();
+var azureClient = new AzureOpenAIClient(new Uri(endpoint), credential);
+var chatClient = azureClient.GetChatClient(deploymentName);
 
 // ===== Crear Agente =====
-// ChatCompletionAgent es el tipo básico de agente conversacional en MAF
-// Se configura directamente con el endpoint de Azure OpenAI
-var agent = new ChatCompletionAgent(
+// AIAgent es el tipo básico de agente conversacional en MAF
+// Se crea usando el método de extensión CreateAIAgent
+var agent = chatClient.CreateAIAgent(
     name: "AsistenteGeneral",
     instructions: """
         Eres un asistente útil y amigable llamado AsistenteGeneral.
         Respondes siempre en español de forma clara y concisa.
         Eres cortés y profesional en todas tus interacciones.
-        """,
-    endpoint: new Uri(endpoint),
-    modelId: deploymentName,
-    apiKey: apiKey
+        """
 );
 
-// ===== Crear Historial de Conversación =====
-// ChatHistory almacena el contexto de la conversación
-var chatHistory = new ChatHistory();
+// ===== Historial de Conversación =====
+// Usamos List<ChatMessage> para almacenar el contexto de la conversación
+var messages = new List<ChatMessage>();
 
 // ===== Bucle de Conversación =====
 Console.WriteLine("============================================");
@@ -269,41 +265,39 @@ while (true)
     }
     
     // Agregar mensaje del usuario al historial
-    chatHistory.AddUserMessage(userInput);
+    messages.Add(new UserChatMessage(userInput));
     
     // Invocar el agente y obtener respuesta
     Console.Write("🤖 AsistenteGeneral: ");
     
     try
     {
-        // InvokeAsync permite obtener la respuesta del agente
+        // RunStreamingAsync permite obtener la respuesta del agente en streaming
         string response = "";
-        await foreach (var message in agent.InvokeAsync(chatHistory))
+        await foreach (var update in agent.RunStreamingAsync(messages))
         {
-            Console.Write(message.Content);
-            response += message.Content;
+            foreach (var contentPart in update.ContentUpdate)
+            {
+                Console.Write(contentPart.Text);
+                response += contentPart.Text;
+            }
         }
         
         Console.WriteLine("\n");
         
         // Agregar la respuesta del agente al historial para mantener contexto
-        chatHistory.AddAssistantMessage(response);
+        messages.Add(new AssistantChatMessage(response));
         
         // Gestión de historial: truncar si supera 10 mensajes
-        if (chatHistory.Count > 10)
+        if (messages.Count > 10)
         {
-            var messagesToKeep = chatHistory.Skip(chatHistory.Count - 10).ToList();
-            chatHistory.Clear();
-            foreach (var message in messagesToKeep)
-            {
-                chatHistory.Add(message);
-            }
+            messages = messages.Skip(messages.Count - 10).ToList();
         }
     }
     catch (HttpRequestException ex)
     {
         Console.WriteLine($"\n❌ Error de conexión: {ex.Message}");
-        Console.WriteLine("Verifica tu endpoint y API key.\n");
+        Console.WriteLine("Verifica tu endpoint y credenciales de Azure.\n");
     }
     catch (Exception ex)
     {
@@ -315,23 +309,22 @@ while (true)
 ### 3.2 Explicación del Código
 
 **Sección de Configuración**:
-- `ConfigurationBuilder`: Carga configuración desde múltiples fuentes
-- `AddJsonFile`: Lee `appsettings.json`
-- `AddUserSecrets`: Lee la API key desde user secrets (seguro)
+- `ConfigurationBuilder`: Carga configuración desde `appsettings.json`
+- No necesita API Key - usamos `DefaultAzureCredential` para autenticación segura
 
-**Creación del Agente**:
-- `ChatCompletionAgent`: Tipo de agente conversacional básico en Microsoft Agent Framework
+**Creación del Cliente y Agente**:
+- `DefaultAzureCredential`: Detecta automáticamente credenciales de Azure CLI, Managed Identity, etc.
+- `AzureOpenAIClient`: Cliente para conectarse a Azure OpenAI Service
+- `GetChatClient()`: Obtiene un cliente de chat para el deployment específico
+- `CreateAIAgent()`: Método de extensión que crea un agente de MAF
 - `name`: Identificador del agente
 - `instructions`: System prompt que define el comportamiento del agente
-- `endpoint`: URL del servicio Azure OpenAI
-- `modelId`: Nombre del deployment del modelo en Azure
-- `apiKey`: Clave de API para autenticación
 
 **Gestión de Conversación**:
-- `ChatHistory`: Almacena mensajes del usuario y del agente
-- `AddUserMessage()`: Agrega mensaje del usuario al historial
-- `AddAssistantMessage()`: Agrega respuesta del agente al historial
-- `InvokeAsync()`: Invoca el agente y retorna respuestas de forma asíncrona
+- `List<ChatMessage>`: Lista que almacena mensajes del usuario y del agente
+- `UserChatMessage`: Representa un mensaje del usuario
+- `AssistantChatMessage`: Representa una respuesta del agente
+- `RunStreamingAsync()`: Invoca el agente y retorna respuestas en streaming
 - **Truncamiento de historial**: Evita exceder límites de tokens (importante para conversaciones largas)
 
 ---
@@ -473,25 +466,25 @@ Reduce `MaxTokens` en `appsettings.json`:
 
 ---
 
-### Error: "401 Unauthorized"
+### Error: "401 Unauthorized" o "AuthenticationFailedException"
 
 **Síntoma**: 
 ```
-❌ Error de conexión: Unauthorized (401)
+❌ Error de conexión: AuthenticationFailedException
 ```
 
-**Causa**: API Key incorrecta o no configurada
+**Causa**: No has iniciado sesión en Azure o las credenciales han expirado
 
 **Solución**:
-1. Verifica que configuraste user secrets:
+1. Inicia sesión con Azure CLI:
    ```bash
-   dotnet user-secrets list
+   az login
    ```
-2. Si no aparece, configúralo:
+2. Verifica que estás conectado:
    ```bash
-   dotnet user-secrets set "AzureOpenAI:ApiKey" "tu-key-real"
+   az account show
    ```
-3. Verifica que tu API Key es correcta en Azure Portal
+3. Si usas Managed Identity, verifica que está configurada correctamente
 
 ---
 
@@ -523,22 +516,22 @@ Reduce `MaxTokens` en `appsettings.json`:
 
 En este laboratorio aprendiste:
 
-✅ **Configurar el entorno** con appsettings.json y user secrets  
-✅ **Crear un ChatCompletionAgent** con instrucciones personalizadas  
-✅ **Gestionar ChatHistory** para mantener contexto de conversación  
-✅ **Invocar el agente** con InvokeAsync para obtener respuestas  
+✅ **Configurar el entorno** con appsettings.json y DefaultAzureCredential  
+✅ **Crear un AIAgent** con instrucciones personalizadas usando CreateAIAgent  
+✅ **Gestionar historial de mensajes** con List<ChatMessage> para mantener contexto  
+✅ **Invocar el agente** con RunStreamingAsync para obtener respuestas en streaming  
 ✅ **Manejar errores** comunes de conexión y configuración
 
 ### Conceptos Clave
 
 | Concepto | Descripción |
 |----------|-------------|
-| **ChatCompletionAgent** | Agente conversacional básico de Microsoft Agent Framework |
-| **Instructions** | System prompt que define el comportamiento del agente |
-| **ChatHistory** | Historial de mensajes para mantener contexto |
-| **InvokeAsync** | Método para invocar el agente y obtener respuestas |
-| **endpoint** | URL del servicio Azure OpenAI |
-| **modelId** | Nombre del deployment del modelo en Azure |
+| **AIAgent** | Agente conversacional básico de Microsoft Agent Framework |
+| **CreateAIAgent** | Método de extensión para crear un agente desde un ChatClient |
+| **DefaultAzureCredential** | Autenticación automática con Azure (CLI, Managed Identity, etc.) |
+| **AzureOpenAIClient** | Cliente para conectarse a Azure OpenAI Service |
+| **ChatMessage** | Tipos para representar mensajes (UserChatMessage, AssistantChatMessage) |
+| **RunStreamingAsync** | Método para invocar el agente y obtener respuestas en streaming |
 
 ---
 
