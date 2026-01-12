@@ -1,216 +1,83 @@
 // =============================================================================
-// ProjectManagerAgent.cs - Agente coordinador con routing inteligente
+// ProjectManagerAgent.cs - Agente Triage para Handoff Orchestration
 // =============================================================================
-// Descripción: El ProjectManagerAgent analiza las tareas y las delega al 
-// especialista apropiado (Designer, Developer, o QA) usando function calling.
+// Descripción: El TriageAgent actúa como coordinador inicial que analiza las
+// tareas y las transfiere (handoff) al especialista apropiado.
+//
+// Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff
 // =============================================================================
 
-using System.ComponentModel;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Chat;
-using Microsoft.SemanticKernel;
+using Microsoft.Extensions.AI;
 
 namespace DelegationWorkflow;
 
 /// <summary>
-/// Agente coordinador que actúa como Project Manager.
-/// Analiza tareas entrantes y las delega al especialista correcto.
+/// Factory para crear el agente Triage (coordinador) que decide handoffs.
+/// En el patrón Handoff, el Triage nunca responde directamente - siempre
+/// transfiere el control completo a un especialista.
 /// </summary>
-public class ProjectManagerAgent
+public static class TriageAgentFactory
 {
-    private readonly ChatCompletionAgent _pmAgent;
-    private readonly ChatCompletionAgent _designerAgent;
-    private readonly ChatCompletionAgent _developerAgent;
-    private readonly ChatCompletionAgent _qaAgent;
-    private readonly Kernel _kernel;
-
     /// <summary>
-    /// Resultado de la delegación incluyendo agente seleccionado y respuesta
+    /// Crea el agente Triage que coordina los handoffs a especialistas.
+    /// 
+    /// Diferencia clave con Agent-as-Tool:
+    /// - En Handoff: El Triage transfiere CONTROL COMPLETO al especialista
+    /// - En Agent-as-Tool: El agente principal retiene el control
     /// </summary>
-    public record DelegationResult(
-        string SelectedAgent,
-        string Reasoning,
-        string SpecialistResponse
-    );
-
-    public ProjectManagerAgent(string endpoint, string deploymentName, string apiKey)
+    public static ChatClientAgent CreateTriageAgent(IChatClient chatClient)
     {
-        // Crear los agentes especialistas
-        _designerAgent = SpecialistAgents.CreateDesignerAgent(endpoint, deploymentName, apiKey);
-        _developerAgent = SpecialistAgents.CreateDeveloperAgent(endpoint, deploymentName, apiKey);
-        _qaAgent = SpecialistAgents.CreateQAAgent(endpoint, deploymentName, apiKey);
-
-        // Crear el kernel para function calling
-        _kernel = Kernel.CreateBuilder()
-            .AddAzureOpenAIChatCompletion(
-                deploymentName: deploymentName,
-                endpoint: endpoint,
-                apiKey: apiKey)
-            .Build();
-
-        // Registrar la función de routing como plugin
-        _kernel.Plugins.AddFromObject(new RoutingPlugin(), "Routing");
-
-        // Crear el agente PM con capacidad de function calling
-        _pmAgent = new ChatCompletionAgent(
-            name: "ProjectManagerAgent",
+        return new ChatClientAgent(
+            chatClient: chatClient,
             instructions: """
-                Eres un Project Manager experto que coordina un equipo de 3 especialistas:
+                Eres un coordinador de equipo técnico. Tu ÚNICA responsabilidad es analizar
+                las tareas y hacer handoff al especialista correcto. NUNCA respondas las
+                tareas tú mismo.
+
+                👥 TU EQUIPO DE ESPECIALISTAS:
                 
-                👥 TU EQUIPO:
-                1. **DesignerAgent** - Experto en UI/UX, wireframes, diseño visual
-                2. **DeveloperAgent** - Experto en código, arquitectura, APIs
-                3. **QAAgent** - Experto en testing, casos de prueba, automatización
-                
-                🎯 TU TRABAJO:
-                1. Analizar cada tarea que recibas
-                2. Determinar qué especialista es el más apropiado
-                3. Usar la función 'route_task' para asignar la tarea
-                
-                📋 CRITERIOS DE ROUTING:
-                - Tareas de diseño, UI, UX, colores, wireframes → DesignerAgent
-                - Tareas de código, APIs, arquitectura, implementación → DeveloperAgent
-                - Tareas de testing, QA, bugs, casos de prueba → QAAgent
-                
-                SIEMPRE usa la función route_task para delegar. No intentes resolver tú mismo.
+                1. **designer_agent** - Experto en:
+                   - Diseño de interfaces (UI)
+                   - Experiencia de usuario (UX)
+                   - Wireframes y mockups
+                   - Sistemas de diseño
+                   - Accesibilidad
+                   
+                2. **developer_agent** - Experto en:
+                   - Desarrollo de software
+                   - APIs y endpoints
+                   - Arquitectura de sistemas
+                   - Código y algoritmos
+                   - Bases de datos
+                   
+                3. **qa_agent** - Experto en:
+                   - Testing y QA
+                   - Casos de prueba
+                   - Automatización
+                   - Control de calidad
+                   - Detección de bugs
+
+                🎯 TU PROCESO:
+                1. Lee la tarea cuidadosamente
+                2. Identifica el tipo de trabajo requerido
+                3. Explica brevemente por qué elegiste ese especialista
+                4. Haz handoff usando: handoff_to_designer_agent, handoff_to_developer_agent, o handoff_to_qa_agent
+
+                📋 CRITERIOS DE DECISIÓN:
+                - Palabras como "diseño", "pantalla", "interfaz", "UI", "UX", "botón", "color" → designer_agent
+                - Palabras como "implementar", "código", "API", "endpoint", "función", "clase" → developer_agent
+                - Palabras como "test", "prueba", "validar", "QA", "bug", "caso de prueba" → qa_agent
+
+                ⚠️ IMPORTANTE:
+                - SIEMPRE haz handoff - NUNCA intentes resolver la tarea tú mismo
+                - El handoff transfiere el control COMPLETO al especialista
+                - Proporciona contexto breve antes del handoff
+
+                Responde en español.
                 """,
-            kernel: _kernel,
-            endpoint: new Uri(endpoint),
-            modelId: deploymentName,
-            apiKey: apiKey
+            name: "triage_agent",
+            description: "Coordinador que analiza tareas y las asigna a especialistas mediante handoff"
         );
-    }
-
-    /// <summary>
-    /// Procesa una tarea y la delega al especialista apropiado
-    /// </summary>
-    public async Task<DelegationResult> ProcessTaskAsync(string task)
-    {
-        Console.WriteLine($"📋 PM recibió tarea: \"{task}\"");
-        Console.WriteLine();
-
-        // Paso 1: El PM analiza y decide a quién delegar
-        var pmChat = new ChatHistory();
-        pmChat.AddUserMessage($"""
-            Analiza la siguiente tarea y usa la función route_task para asignarla al especialista correcto.
-            
-            TAREA: {task}
-            
-            Recuerda: DEBES usar la función route_task con el especialista apropiado (designer, developer, o qa).
-            """);
-
-        string selectedAgent = "";
-        string reasoning = "";
-
-        // El PM usa function calling para decidir
-        var invocationOptions = new AgentInvocationOptions
-        {
-            KernelArguments = new KernelArguments
-            {
-                ["task"] = task
-            }
-        };
-
-        await foreach (var message in _pmAgent.InvokeAsync(pmChat, invocationOptions))
-        {
-            // Capturar el razonamiento del PM
-            if (!string.IsNullOrEmpty(message.Content))
-            {
-                reasoning += message.Content;
-            }
-
-            // Detectar la función llamada
-            if (message.Items != null)
-            {
-                foreach (var item in message.Items)
-                {
-                    if (item is Microsoft.Agents.AI.Abstractions.FunctionResultContent functionResult)
-                    {
-                        selectedAgent = functionResult.Result?.ToString() ?? "";
-                    }
-                }
-            }
-        }
-
-        // Si no se detectó el agente, usar heurística simple
-        if (string.IsNullOrEmpty(selectedAgent))
-        {
-            selectedAgent = DetermineAgentFromTask(task);
-            reasoning = $"Análisis heurístico: la tarea parece ser de tipo {selectedAgent}";
-        }
-
-        Console.WriteLine($"🎯 PM decidió delegar a: {selectedAgent}");
-        Console.WriteLine($"💭 Razonamiento: {reasoning}");
-        Console.WriteLine();
-
-        // Paso 2: Invocar al especialista seleccionado
-        var specialist = selectedAgent.ToLower() switch
-        {
-            "designer" or "designeragent" => _designerAgent,
-            "developer" or "developeragent" => _developerAgent,
-            "qa" or "qaagent" => _qaAgent,
-            _ => _developerAgent // Default
-        };
-
-        Console.WriteLine($"📤 Delegando tarea a {specialist.Name}...");
-        Console.WriteLine();
-
-        var specialistChat = new ChatHistory();
-        specialistChat.AddUserMessage(task);
-
-        string specialistResponse = "";
-        await foreach (var message in specialist.InvokeAsync(specialistChat))
-        {
-            specialistResponse += message.Content;
-        }
-
-        return new DelegationResult(
-            SelectedAgent: specialist.Name ?? selectedAgent,
-            Reasoning: reasoning,
-            SpecialistResponse: specialistResponse
-        );
-    }
-
-    /// <summary>
-    /// Heurística simple para determinar el agente basado en palabras clave
-    /// </summary>
-    private static string DetermineAgentFromTask(string task)
-    {
-        var taskLower = task.ToLower();
-
-        // Keywords de diseño
-        if (taskLower.Contains("diseño") || taskLower.Contains("ui") || taskLower.Contains("ux") ||
-            taskLower.Contains("interfaz") || taskLower.Contains("wireframe") || taskLower.Contains("mockup") ||
-            taskLower.Contains("color") || taskLower.Contains("botón") || taskLower.Contains("pantalla"))
-        {
-            return "designer";
-        }
-
-        // Keywords de QA
-        if (taskLower.Contains("test") || taskLower.Contains("prueba") || taskLower.Contains("qa") ||
-            taskLower.Contains("bug") || taskLower.Contains("validar") || taskLower.Contains("verificar") ||
-            taskLower.Contains("calidad") || taskLower.Contains("error"))
-        {
-            return "qa";
-        }
-
-        // Default: desarrollo
-        return "developer";
-    }
-}
-
-/// <summary>
-/// Plugin con la función de routing que el PM puede llamar
-/// </summary>
-public class RoutingPlugin
-{
-    [KernelFunction("route_task")]
-    [Description("Asigna una tarea al especialista apropiado: designer (UI/UX), developer (código), o qa (testing)")]
-    public string RouteTask(
-        [Description("El especialista seleccionado: 'designer', 'developer', o 'qa'")] string specialist,
-        [Description("Breve explicación de por qué se eligió este especialista")] string reason)
-    {
-        Console.WriteLine($"   🔀 Function call: route_task(specialist=\"{specialist}\", reason=\"{reason}\")");
-        return specialist;
     }
 }

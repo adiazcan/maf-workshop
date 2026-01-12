@@ -1,18 +1,24 @@
 // =============================================================================
-// Program.cs - Workflow de Delegación con Microsoft Agent Framework
+// Program.cs - Workflow de Handoff con Microsoft Agent Framework
 // =============================================================================
-// Descripción: Este ejemplo implementa un patrón de delegación donde un
-// ProjectManagerAgent analiza tareas y las asigna a especialistas:
-// Designer, Developer o QA según el tipo de trabajo requerido.
+// Descripción: Este ejemplo implementa el patrón oficial de Handoff Orchestration
+// donde un TriageAgent transfiere el control completo a agentes especialistas.
+//
+// Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff
 //
 // Conceptos demostrados:
-// - Routing inteligente de tareas
-// - Agente coordinador con múltiples especialistas
-// - Uso de function calling para decisiones de routing
-// - Delegación basada en análisis de contenido
+// - AgentWorkflowBuilder.StartHandoffWith() para configurar handoffs
+// - ChatClientAgent para agentes compatibles con handoff
+// - Reglas de handoff bidireccionales
+// - Streaming de eventos del workflow
 // =============================================================================
 
+using Azure.AI.OpenAI;
+using Azure.Identity;
 using DelegationWorkflow;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 
 // =============================================================================
@@ -35,27 +41,76 @@ var apiKey = configuration["AzureOpenAI:ApiKey"]
     ?? throw new InvalidOperationException("Falta configuración: AzureOpenAI:ApiKey. Use 'dotnet user-secrets set AzureOpenAI:ApiKey TU-API-KEY'");
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("         WORKFLOW DE DELEGACIÓN: Project Manager → Especialistas");
+Console.WriteLine("    WORKFLOW DE HANDOFF: Triage → Especialistas");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 2: Crear el Project Manager Agent
+// PASO 2: Crear el cliente de Azure OpenAI
 // =============================================================================
 
-Console.WriteLine("Inicializando equipo de trabajo...");
-Console.WriteLine();
+// Crear el cliente de chat usando Azure OpenAI
+// Nota: Usamos API key aquí, pero en producción se recomienda Azure Identity
+var azureClient = new AzureOpenAIClient(
+    new Uri(endpoint),
+    new System.ClientModel.ApiKeyCredential(apiKey));
 
-var projectManager = new ProjectManagerAgent(endpoint, deploymentName, apiKey);
+IChatClient chatClient = azureClient
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
 
-Console.WriteLine("✓ ProjectManagerAgent creado - Coordinador del equipo");
-Console.WriteLine("  └─ DesignerAgent (UI/UX)");
-Console.WriteLine("  └─ DeveloperAgent (Código)");
-Console.WriteLine("  └─ QAAgent (Testing)");
+Console.WriteLine("✓ Cliente Azure OpenAI configurado");
+Console.WriteLine($"  Endpoint: {endpoint}");
+Console.WriteLine($"  Modelo: {deploymentName}");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 3: Definir tareas de diferentes tipos
+// PASO 3: Crear los agentes especialistas
+// =============================================================================
+
+Console.WriteLine("👥 Creando equipo de agentes...");
+Console.WriteLine();
+
+// Crear el agente Triage (coordinador)
+var triageAgent = TriageAgentFactory.CreateTriageAgent(chatClient);
+Console.WriteLine($"  ✓ {triageAgent.Name} (Coordinador)");
+
+// Crear los agentes especialistas
+var designerAgent = SpecialistAgents.CreateDesignerAgent(chatClient);
+var developerAgent = SpecialistAgents.CreateDeveloperAgent(chatClient);
+var qaAgent = SpecialistAgents.CreateQAAgent(chatClient);
+
+Console.WriteLine($"    └─ {designerAgent.Name} (UI/UX)");
+Console.WriteLine($"    └─ {developerAgent.Name} (Código)");
+Console.WriteLine($"    └─ {qaAgent.Name} (Testing)");
+Console.WriteLine();
+
+// =============================================================================
+// PASO 4: Configurar las reglas de Handoff
+// =============================================================================
+
+Console.WriteLine("📋 Configurando reglas de handoff...");
+
+// Construir el workflow de handoff usando AgentWorkflowBuilder
+// - StartHandoffWith: Define el agente inicial que recibe todas las tareas
+// - WithHandoffs: Define a qué agentes puede hacer handoff el triage
+// - WithHandoff: Define handoffs individuales (especialistas → triage)
+var workflow = AgentWorkflowBuilder
+    .StartHandoffWith(triageAgent)
+    .WithHandoffs(triageAgent, [designerAgent, developerAgent, qaAgent])
+    .WithHandoff(designerAgent, triageAgent)
+    .WithHandoff(developerAgent, triageAgent)
+    .WithHandoff(qaAgent, triageAgent)
+    .Build();
+
+Console.WriteLine("   triage_agent → [designer_agent, developer_agent, qa_agent]");
+Console.WriteLine("   designer_agent → [triage_agent]");
+Console.WriteLine("   developer_agent → [triage_agent]");
+Console.WriteLine("   qa_agent → [triage_agent]");
+Console.WriteLine();
+
+// =============================================================================
+// PASO 5: Definir tareas de diferentes tipos
 // =============================================================================
 
 var tasks = new[]
@@ -71,14 +126,14 @@ var tasks = new[]
 };
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("                    PROCESANDO TAREAS");
+Console.WriteLine("                    PROCESANDO TAREAS CON HANDOFF");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 
 // =============================================================================
-// PASO 4: Procesar cada tarea con el Project Manager
+// PASO 6: Procesar cada tarea usando el workflow de handoff
 // =============================================================================
 
-var results = new List<(string Task, ProjectManagerAgent.DelegationResult Result)>();
+var results = new List<(string Task, string HandoffTo, string Response)>();
 
 for (int i = 0; i < tasks.Length; i++)
 {
@@ -87,61 +142,125 @@ for (int i = 0; i < tasks.Length; i++)
     Console.WriteLine($"│ TAREA {i + 1}/{tasks.Length}                                                        │");
     Console.WriteLine($"└─────────────────────────────────────────────────────────────────┘");
     Console.WriteLine();
-
-    var result = await projectManager.ProcessTaskAsync(tasks[i]);
-    results.Add((tasks[i], result));
-
-    Console.WriteLine($"📥 Respuesta de {result.SelectedAgent}:");
-    Console.WriteLine("─────────────────────────────────────────────────────────────────");
-    Console.WriteLine(result.SpecialistResponse);
+    
+    var taskDescription = tasks[i].Length > 60 
+        ? tasks[i].Substring(0, 57) + "..." 
+        : tasks[i];
+    Console.WriteLine($"📨 \"{taskDescription}\"");
     Console.WriteLine();
+
+    // Crear historial de mensajes para esta tarea
+    List<ChatMessage> messages = new()
+    {
+        new ChatMessage(ChatRole.User, tasks[i])
+    };
+
+    // Ejecutar el workflow con streaming
+    StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+    await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
+
+    string currentAgent = "triage_agent";
+    string handoffTo = "";
+    string finalResponse = "";
+    
+    // Procesar eventos del workflow
+    await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
+    {
+        if (evt is AgentRunUpdateEvent e)
+        {
+            // Detectar cambio de agente (handoff)
+            if (e.ExecutorId != currentAgent)
+            {
+                if (currentAgent == "triage_agent")
+                {
+                    handoffTo = e.ExecutorId ?? "";
+                    Console.WriteLine($"   🔀 Handoff → {handoffTo}");
+                    Console.WriteLine();
+                }
+                currentAgent = e.ExecutorId ?? currentAgent;
+            }
+            
+            // Acumular respuesta del especialista
+            if (currentAgent != "triage_agent" && !string.IsNullOrEmpty(e.Data?.ToString()))
+            {
+                finalResponse += e.Data?.ToString();
+            }
+            
+            // Mostrar streaming (solo primeros caracteres para no saturar)
+            if (!string.IsNullOrEmpty(e.Data?.ToString()))
+            {
+                Console.Write(e.Data);
+            }
+        }
+        else if (evt is WorkflowOutputEvent outputEvt)
+        {
+            // El workflow terminó
+            var outputMessages = outputEvt.Data as List<ChatMessage>;
+            if (outputMessages?.Count > 0)
+            {
+                var lastMessage = outputMessages.Last();
+                if (string.IsNullOrEmpty(finalResponse))
+                {
+                    finalResponse = lastMessage.Text ?? "";
+                }
+            }
+            break;
+        }
+    }
+    
+    Console.WriteLine();
+    Console.WriteLine();
+    
+    results.Add((tasks[i], handoffTo, finalResponse));
 }
 
 // =============================================================================
-// PASO 5: Resumen de delegaciones
+// PASO 7: Resumen de handoffs
 // =============================================================================
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-Console.WriteLine("                    RESUMEN DE DELEGACIONES");
+Console.WriteLine("                    RESUMEN DE HANDOFFS");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
 Console.WriteLine("┌──────────┬────────────────────────────────────────┬─────────────────┐");
-Console.WriteLine("│ # Tarea  │ Descripción (truncada)                 │ Delegada a      │");
+Console.WriteLine("│ Tarea    │ Descripción                            │ Handoff a       │");
 Console.WriteLine("├──────────┼────────────────────────────────────────┼─────────────────┤");
 
 for (int i = 0; i < results.Count; i++)
 {
-    var (task, result) = results[i];
+    var (task, handoff, _) = results[i];
     var truncatedTask = task.Length > 38 ? task.Substring(0, 35) + "..." : task.PadRight(38);
-    Console.WriteLine($"│ Tarea {i + 1}  │ {truncatedTask} │ {result.SelectedAgent,-15} │");
+    var agentDisplay = string.IsNullOrEmpty(handoff) ? "N/A" : handoff;
+    Console.WriteLine($"│ Tarea {i + 1}  │ {truncatedTask} │ {agentDisplay,-15} │");
 }
 
 Console.WriteLine("└──────────┴────────────────────────────────────────┴─────────────────┘");
 Console.WriteLine();
 
-// Contar delegaciones por tipo
-var designerCount = results.Count(r => r.Result.SelectedAgent.Contains("Designer"));
-var developerCount = results.Count(r => r.Result.SelectedAgent.Contains("Developer"));
-var qaCount = results.Count(r => r.Result.SelectedAgent.Contains("QA"));
+// Contar handoffs por tipo
+var designerCount = results.Count(r => r.HandoffTo.Contains("designer"));
+var developerCount = results.Count(r => r.HandoffTo.Contains("developer"));
+var qaCount = results.Count(r => r.HandoffTo.Contains("qa"));
 
-Console.WriteLine("📊 Distribución de trabajo:");
-Console.WriteLine($"   🎨 DesignerAgent:   {designerCount} tarea(s)");
-Console.WriteLine($"   💻 DeveloperAgent:  {developerCount} tarea(s)");
-Console.WriteLine($"   🔍 QAAgent:         {qaCount} tarea(s)");
+Console.WriteLine("📊 Distribución de handoffs:");
+Console.WriteLine($"   🎨 designer_agent:   {designerCount} tarea(s)");
+Console.WriteLine($"   💻 developer_agent:  {developerCount} tarea(s)");
+Console.WriteLine($"   🔍 qa_agent:         {qaCount} tarea(s)");
 Console.WriteLine();
 
 // =============================================================================
-// PASO 6: Validación del workflow
+// PASO 8: Validación del workflow
 // =============================================================================
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("                    WORKFLOW COMPLETADO");
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine();
-Console.WriteLine("✓ ProjectManagerAgent analizó cada tarea y determinó el especialista");
-Console.WriteLine("✓ Las tareas de diseño fueron delegadas a DesignerAgent");
-Console.WriteLine("✓ Las tareas de código fueron delegadas a DeveloperAgent");
-Console.WriteLine("✓ Las tareas de testing fueron delegadas a QAAgent");
-Console.WriteLine("✓ Cada especialista proporcionó una respuesta en su área de expertise");
+Console.WriteLine("✓ Patrón Handoff Orchestration implementado correctamente");
+Console.WriteLine("✓ El triage_agent transfirió control a especialistas");
+Console.WriteLine("✓ Cada especialista manejó su tarea de forma independiente");
+Console.WriteLine("✓ El contexto completo se transfirió en cada handoff");
+Console.WriteLine();
+Console.WriteLine("📖 Referencia: https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/handoff");
 Console.WriteLine();

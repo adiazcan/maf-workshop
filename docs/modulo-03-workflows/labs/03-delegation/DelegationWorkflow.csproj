@@ -10,6 +10,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.2.0" />
+    <PackageReference Include="Azure.Identity" Version="1.14.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.0.0-preview.1.25166.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
