@@ -6,9 +6,8 @@
 // ============================================================================
 
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
 
 // ===== Configuración =====
 // Cargar configuración desde appsettings.json y user secrets
@@ -26,28 +25,20 @@ var deploymentName = configuration["AzureOpenAI:DeploymentName"]
 var apiKey = configuration["AzureOpenAI:ApiKey"] 
     ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado. Usa: dotnet user-secrets set 'AzureOpenAI:ApiKey' 'tu-key'");
 
-// ===== Crear Kernel =====
-// El Kernel es el contenedor de dependencias de Microsoft Agent Framework
-var builder = Kernel.CreateBuilder();
-
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: deploymentName,
-    endpoint: endpoint,
+// ===== Crear Agente =====
+// ChatCompletionAgent es el tipo básico de agente conversacional en MAF
+// Se configura directamente con el endpoint de Azure OpenAI
+var agent = new ChatCompletionAgent(
+    name: "AsistenteGeneral",
+    instructions: """
+        Eres un asistente útil y amigable llamado AsistenteGeneral.
+        Respondes siempre en español de forma clara y concisa.
+        Eres cortés y profesional en todas tus interacciones.
+        """,
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
     apiKey: apiKey
 );
-
-var kernel = builder.Build();
-
-// ===== Crear Agente =====
-// ChatCompletionAgent es el tipo básico de agente conversacional
-var agent = new ChatCompletionAgent()
-{
-    Name = "AsistenteGeneral",
-    Instructions = @"Eres un asistente útil y amigable llamado AsistenteGeneral.
-Respondes siempre en español de forma clara y concisa.
-Eres cortés y profesional en todas tus interacciones.",
-    Kernel = kernel
-};
 
 // ===== Crear Historial de Conversación =====
 // ChatHistory almacena el contexto de la conversación
@@ -84,24 +75,20 @@ while (true)
     
     try
     {
-        // InvokeStreamingAsync permite mostrar la respuesta progresivamente
-        await foreach (var message in agent.InvokeStreamingAsync(chatHistory))
+        // InvokeAsync permite obtener la respuesta del agente
+        // Iteramos sobre los mensajes de respuesta
+        string response = "";
+        await foreach (var message in agent.InvokeAsync(chatHistory))
         {
             // Mostrar cada fragmento de la respuesta
             Console.Write(message.Content);
+            response += message.Content;
         }
         
         Console.WriteLine("\n");
         
-        // Agregar la última respuesta del agente al historial
-        // (El streaming no lo hace automáticamente)
-        var lastMessage = chatHistory.Last();
-        if (lastMessage.Role == Microsoft.SemanticKernel.ChatCompletion.AuthorRole.User)
-        {
-            // Si el último mensaje es del usuario, necesitamos obtener la respuesta completa
-            var response = await agent.InvokeAsync(chatHistory);
-            chatHistory.Add(response);
-        }
+        // Agregar la respuesta del agente al historial para mantener contexto
+        chatHistory.AddAssistantMessage(response);
     }
     catch (HttpRequestException ex)
     {

@@ -67,9 +67,6 @@ dotnet add package Microsoft.Agents.AI --version 1.0.0-preview.260108.1
 # Microsoft Agent Framework Abstractions
 dotnet add package Microsoft.Agents.AI.Abstractions --version 1.0.0-preview.260108.1
 
-# Azure OpenAI SDK
-dotnet add package Azure.AI.OpenAI --version 2.0.0
-
 # Configuración (.NET Configuration System)
 dotnet add package Microsoft.Extensions.Configuration --version 10.0.0
 dotnet add package Microsoft.Extensions.Configuration.Json --version 10.0.0
@@ -86,7 +83,6 @@ dotnet list package
 Project 'HelloAgent' has the following package references
    [net10.0]:
    Top-level Package                                       Requested
-   > Azure.AI.OpenAI                                       2.0.0
    > Microsoft.Agents.AI                                   1.0.0-preview.260108.1
    > Microsoft.Agents.AI.Abstractions                      1.0.0-preview.260108.1
    > Microsoft.Extensions.Configuration                    10.0.0
@@ -181,7 +177,6 @@ Y agrega este `<ItemGroup>` para copiar appsettings.json al output:
   <ItemGroup>
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
     <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" />
@@ -213,9 +208,8 @@ Abre `Program.cs` y reemplaza todo el contenido con el siguiente código:
 // ============================================================================
 
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Chat;
 using Microsoft.Extensions.Configuration;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
 
 // ===== Configuración =====
 // Cargar configuración desde appsettings.json y user secrets
@@ -233,28 +227,20 @@ var deploymentName = configuration["AzureOpenAI:DeploymentName"]
 var apiKey = configuration["AzureOpenAI:ApiKey"] 
     ?? throw new InvalidOperationException("AzureOpenAI:ApiKey no configurado");
 
-// ===== Crear Kernel =====
-// El Kernel es el contenedor de dependencias de Microsoft Agent Framework
-var builder = Kernel.CreateBuilder();
-
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: deploymentName,
-    endpoint: endpoint,
+// ===== Crear Agente =====
+// ChatCompletionAgent es el tipo básico de agente conversacional en MAF
+// Se configura directamente con el endpoint de Azure OpenAI
+var agent = new ChatCompletionAgent(
+    name: "AsistenteGeneral",
+    instructions: """
+        Eres un asistente útil y amigable llamado AsistenteGeneral.
+        Respondes siempre en español de forma clara y concisa.
+        Eres cortés y profesional en todas tus interacciones.
+        """,
+    endpoint: new Uri(endpoint),
+    modelId: deploymentName,
     apiKey: apiKey
 );
-
-var kernel = builder.Build();
-
-// ===== Crear Agente =====
-// ChatCompletionAgent es el tipo básico de agente conversacional
-var agent = new ChatCompletionAgent()
-{
-    Name = "AsistenteGeneral",
-    Instructions = @"Eres un asistente útil y amigable llamado AsistenteGeneral.
-Respondes siempre en español de forma clara y concisa.
-Eres cortés y profesional en todas tus interacciones.",
-    Kernel = kernel
-};
 
 // ===== Crear Historial de Conversación =====
 // ChatHistory almacena el contexto de la conversación
@@ -290,13 +276,18 @@ while (true)
     
     try
     {
-        // InvokeStreamingAsync permite mostrar la respuesta progresivamente
-        await foreach (var message in agent.InvokeStreamingAsync(chatHistory))
+        // InvokeAsync permite obtener la respuesta del agente
+        string response = "";
+        await foreach (var message in agent.InvokeAsync(chatHistory))
         {
             Console.Write(message.Content);
+            response += message.Content;
         }
         
         Console.WriteLine("\n");
+        
+        // Agregar la respuesta del agente al historial para mantener contexto
+        chatHistory.AddAssistantMessage(response);
         
         // Gestión de historial: truncar si supera 10 mensajes
         if (chatHistory.Count > 10)
@@ -328,21 +319,19 @@ while (true)
 - `AddJsonFile`: Lee `appsettings.json`
 - `AddUserSecrets`: Lee la API key desde user secrets (seguro)
 
-**Creación del Kernel**:
-- `Kernel.CreateBuilder()`: Inicializa el contenedor de dependencias
-- `AddAzureOpenAIChatCompletion`: Configura el servicio de Azure OpenAI
-- El kernel gestiona la conexión con el modelo LLM
-
 **Creación del Agente**:
-- `ChatCompletionAgent`: Tipo de agente conversacional básico
-- `Name`: Identificador del agente
-- `Instructions`: System prompt que define el comportamiento
-- `Kernel`: Referencia al kernel configurado
+- `ChatCompletionAgent`: Tipo de agente conversacional básico en Microsoft Agent Framework
+- `name`: Identificador del agente
+- `instructions`: System prompt que define el comportamiento del agente
+- `endpoint`: URL del servicio Azure OpenAI
+- `modelId`: Nombre del deployment del modelo en Azure
+- `apiKey`: Clave de API para autenticación
 
 **Gestión de Conversación**:
-- `ChatHistory`: Almacena mensajes del usuario y agente
+- `ChatHistory`: Almacena mensajes del usuario y del agente
 - `AddUserMessage()`: Agrega mensaje del usuario al historial
-- `InvokeStreamingAsync()`: Invoca el agente y muestra respuesta progresivamente
+- `AddAssistantMessage()`: Agrega respuesta del agente al historial
+- `InvokeAsync()`: Invoca el agente y retorna respuestas de forma asíncrona
 - **Truncamiento de historial**: Evita exceder límites de tokens (importante para conversaciones largas)
 
 ---
@@ -535,21 +524,21 @@ Reduce `MaxTokens` en `appsettings.json`:
 En este laboratorio aprendiste:
 
 ✅ **Configurar el entorno** con appsettings.json y user secrets  
-✅ **Crear un Kernel** como contenedor de dependencias  
-✅ **Instanciar un ChatCompletionAgent** con instrucciones personalizadas  
+✅ **Crear un ChatCompletionAgent** con instrucciones personalizadas  
 ✅ **Gestionar ChatHistory** para mantener contexto de conversación  
-✅ **Invocar el agente** con streaming para respuestas progresivas  
+✅ **Invocar el agente** con InvokeAsync para obtener respuestas  
 ✅ **Manejar errores** comunes de conexión y configuración
 
 ### Conceptos Clave
 
 | Concepto | Descripción |
 |----------|-------------|
-| **Kernel** | Contenedor de dependencias y servicios |
-| **ChatCompletionAgent** | Agente conversacional básico |
-| **Instructions** | System prompt que define el comportamiento |
+| **ChatCompletionAgent** | Agente conversacional básico de Microsoft Agent Framework |
+| **Instructions** | System prompt que define el comportamiento del agente |
 | **ChatHistory** | Historial de mensajes para mantener contexto |
-| **Streaming** | Respuestas progresivas en tiempo real |
+| **InvokeAsync** | Método para invocar el agente y obtener respuestas |
+| **endpoint** | URL del servicio Azure OpenAI |
+| **modelId** | Nombre del deployment del modelo en Azure |
 
 ---
 
