@@ -422,7 +422,7 @@ Usuario → AsistenteGeneral → (¿Es matemáticas?)
 
 ## Próximos Pasos
 
-Continúa con el [Módulo 3: Workflows y Orquestación](../../modulo-03-workflows/) donde aprenderás a crear workflows secuenciales, paralelos y de delegación.
+Continúa con el [Módulo 3: Workflows y Orquestación](../../../modulo-03-workflows/) donde aprenderás a crear workflows secuenciales, paralelos y de delegación.
 
 ---
 
