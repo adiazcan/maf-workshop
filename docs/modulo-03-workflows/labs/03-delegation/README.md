@@ -325,8 +325,6 @@ var endpoint = configuration["AzureOpenAI:Endpoint"]
     ?? throw new InvalidOperationException("Falta: AzureOpenAI:Endpoint");
 var deploymentName = configuration["AzureOpenAI:DeploymentName"] 
     ?? throw new InvalidOperationException("Falta: AzureOpenAI:DeploymentName");
-var apiKey = configuration["AzureOpenAI:ApiKey"] 
-    ?? throw new InvalidOperationException("Falta: AzureOpenAI:ApiKey");
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 Console.WriteLine("    WORKFLOW DE HANDOFF: Triage → Especialistas");
@@ -339,7 +337,7 @@ Console.WriteLine();
 
 var azureClient = new AzureOpenAIClient(
     new Uri(endpoint),
-    new System.ClientModel.ApiKeyCredential(apiKey));
+    new Azure.Identity.DefaultAzureCredential());
 
 IChatClient chatClient = azureClient
     .GetChatClient(deploymentName)
@@ -373,7 +371,7 @@ Console.WriteLine("📋 Configurando reglas de handoff...");
 
 // AgentWorkflowBuilder es la API oficial para configurar Handoff Orchestration
 var workflow = AgentWorkflowBuilder
-    .StartHandoffWith(triageAgent)                                          // Agente inicial
+    .CreateHandoffBuilderWith(triageAgent)                                  // Agente inicial
     .WithHandoffs(triageAgent, [designerAgent, developerAgent, qaAgent])    // Triage → Especialistas
     .WithHandoff(designerAgent, triageAgent)                                // Designer → Triage
     .WithHandoff(developerAgent, triageAgent)                               // Developer → Triage
@@ -650,7 +648,7 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 
 **Validación del instructor**:
 - [ ] El proyecto compila sin errores
-- [ ] El workflow usa `AgentWorkflowBuilder.StartHandoffWith()`
+- [ ] El workflow usa `AgentWorkflowBuilder.CreateHandoffBuilderWith()`
 - [ ] Las reglas de handoff están configuradas con `.WithHandoffs()`
 - [ ] Cada tarea muestra un handoff explícito (`🔀 Handoff →`)
 - [ ] Los especialistas responden según su área de expertise
@@ -666,13 +664,11 @@ await foreach (WorkflowEvent evt in run.WatchStreamAsync())
 
 ## Resumen de Archivos Creados
 
-| Archivo | Líneas | Propósito |
-|---------|--------|-----------|
-| `DelegationWorkflow.csproj` | ~25 | Configuración del proyecto y paquetes |
-| `appsettings.json` | ~6 | Configuración de Azure OpenAI |
-| `SpecialistAgents.cs` | ~60 | Tres agentes especialistas |
-| `ProjectManagerAgent.cs` | ~45 | Agente Triage (coordinador) |
-| `Program.cs` | ~100 | Workflow principal con Handoff |
+| Archivo | Propósito |
+|---------|-----------|
+| `DelegationWorkflow.csproj` | Configuración del proyecto y paquetes NuGet |
+| `appsettings.json` | Configuración de Azure OpenAI (endpoint, modelo) |
+| `Program.cs` | Workflow completo con agentes y lógica de handoff |
 
 ## Troubleshooting
 

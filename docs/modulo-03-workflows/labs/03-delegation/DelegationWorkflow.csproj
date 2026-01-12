@@ -9,9 +9,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Microsoft Agent Framework packages -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0-preview.260108.1" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.260108.1" />
     <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.260108.1" />
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.2.0" />
+    
+    <!-- Azure OpenAI SDK -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageReference Include="Azure.Identity" Version="1.14.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
