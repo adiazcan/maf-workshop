@@ -19,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OpenAI.Chat;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -56,34 +57,32 @@ var resourceBuilder = ResourceBuilder.CreateDefault()
         ["lab.number"] = "02"
     });
 
-// Configurar OpenTelemetry para trazas
-builder.Services.AddOpenTelemetry()
-    .ConfigureResource(resource => resource
-        .AddService("workshop-maf-tracing-lab", "1.0.0"))
-    .WithTracing(tracing =>
+// Configurar OpenTelemetry para trazas (almacenar TracerProvider para flushing manual)
+var tracerProvider = Sdk.CreateTracerProviderBuilder()
+    .SetResourceBuilder(resourceBuilder)
+    // Registrar nuestro ActivitySource para trazas de agentes
+    .AddSource("Workshop.MAF.Agents")
+    // Registrar ActivitySource para el workflow
+    .AddSource("Workshop.MAF.Workflow")
+    // Auto-instrumentación de llamadas HTTP (Azure OpenAI)
+    .AddHttpClientInstrumentation(options =>
     {
-        tracing
-            .SetResourceBuilder(resourceBuilder)
-            // Registrar nuestro ActivitySource para trazas de agentes
-            .AddSource("Workshop.MAF.Agents")
-            // Registrar ActivitySource para el workflow
-            .AddSource("Workshop.MAF.Workflow")
-            // Auto-instrumentación de llamadas HTTP (Azure OpenAI)
-            .AddHttpClientInstrumentation(options =>
-            {
-                // Enriquecer spans HTTP con información adicional
-                options.EnrichWithHttpRequestMessage = (activity, request) =>
-                {
-                    activity.SetTag("http.request.host", request.RequestUri?.Host);
-                };
-                options.EnrichWithHttpResponseMessage = (activity, response) =>
-                {
-                    activity.SetTag("http.response.status_code", (int)response.StatusCode);
-                };
-            })
-            // Exportar a consola para visualización
-            .AddConsoleExporter();
-    });
+        // Enriquecer spans HTTP con información adicional
+        options.EnrichWithHttpRequestMessage = (activity, request) =>
+        {
+            activity.SetTag("http.request.host", request.RequestUri?.Host);
+        };
+        options.EnrichWithHttpResponseMessage = (activity, response) =>
+        {
+            activity.SetTag("http.response.status_code", (int)response.StatusCode);
+        };
+    })
+    // Exportar a consola para visualización
+    .AddConsoleExporter(exporterOptions =>
+    {
+        exporterOptions.Targets = OpenTelemetry.Exporter.ConsoleExporterOutputTargets.Console;
+    })
+    .Build();
 
 // Registrar servicios
 builder.Services.AddSingleton<WeatherAgentService>();
@@ -158,27 +157,40 @@ catch (Exception ex)
 Console.WriteLine();
 Console.WriteLine(new string('═', 60));
 Console.WriteLine();
-Console.WriteLine("⏳ Esperando exportación de trazas a consola...");
-Console.WriteLine("   (Las trazas se muestran en formato jerárquico)");
-Console.WriteLine();
-
-// Esperar para que las trazas se exporten
-await Task.Delay(3000);
-
-Console.WriteLine("✅ Laboratorio completado.");
-Console.WriteLine();
-Console.WriteLine("📝 Observa en la salida de trazas:");
+Console.WriteLine("📝 Busca en la salida ARRIBA las líneas que empiezan con:");
 Console.WriteLine("   • Activity.TraceId: Identificador único de la traza completa");
 Console.WriteLine("   • Activity.SpanId: Identificador único de cada span");
 Console.WriteLine("   • Activity.ParentId: Referencia al span padre (jerarquía)");
 Console.WriteLine("   • Activity.Tags: Atributos personalizados que añadimos");
 Console.WriteLine();
+Console.WriteLine("⏳ Forzando exportación de trazas a consola...");
+Console.WriteLine();
+
+// Forzar el flush inmediato de todas las trazas pendientes
+var flushResult = tracerProvider?.ForceFlush(timeoutMilliseconds: 5000);
+Console.WriteLine($"   ForceFlush result: {flushResult}");
+
+// Pausa adicional para asegurar que la exportación se complete
+await Task.Delay(500);
+
+Console.WriteLine();
+Console.WriteLine(new string('═', 60));
+Console.WriteLine();
+Console.WriteLine("✅ Laboratorio completado.");
+Console.WriteLine();
+Console.WriteLine("⬆️  DESPLÁZATE HACIA ARRIBA para ver las trazas exportadas");
+Console.WriteLine("    Busca líneas con 'Activity.TraceId' y 'Activity.DisplayName'");
+Console.WriteLine();
 Console.WriteLine("🔍 Estructura esperada de la traza:");
 Console.WriteLine("   └─ Workflow.ProcessQuery (span padre)");
 Console.WriteLine("      ├─ WeatherAgent.GetWeather (span hijo)");
-Console.WriteLine("      │  └─ HTTP GET (auto-instrumentado)");
+Console.WriteLine("      │  └─ HTTP POST (auto-instrumentado)");
 Console.WriteLine("      └─ NewsAgent.GetNews (span hijo)");
-Console.WriteLine("         └─ HTTP GET (auto-instrumentado)");
+Console.WriteLine("         └─ HTTP POST (auto-instrumentado)");
+
+// Limpiar recursos
+tracerProvider?.Dispose();
+host.Dispose();
 
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║                    ORQUESTADOR DEL WORKFLOW                                ║
@@ -232,6 +244,8 @@ public class WorkflowOrchestrator
         using var activity = ActivitySource.StartActivity(
             name: "Workflow.ProcessQuery",
             kind: ActivityKind.Server);
+        
+        Console.WriteLine($"   🔍 DEBUG: Activity created = {activity != null}, TraceId = {activity?.TraceId}");
         
         // Generar un ID de correlación para tracking
         var correlationId = Guid.NewGuid().ToString("N")[..8];
