@@ -20,6 +20,7 @@
 using System.Diagnostics;
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -71,7 +72,7 @@ Console.WriteLine();
 
 // Método helper para crear agentes con diferentes perspectivas
 static ChatClientAgent CreateExpertAgent(IChatClient chatClient, string name, string instructions) =>
-    new(chatClient, instructions) { Name = name };
+    new(chatClient, instructions);
 
 // Crear los tres agentes especializados
 var researcherAgent = CreateExpertAgent(

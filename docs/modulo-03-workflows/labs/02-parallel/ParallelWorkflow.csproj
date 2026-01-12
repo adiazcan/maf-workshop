@@ -20,9 +20,6 @@
     <!-- Azure Identity para autenticación -->
     <PackageReference Include="Azure.Identity" Version="1.13.0" />
     
-    <!-- Microsoft Extensions AI -->
-    <PackageReference Include="Microsoft.Extensions.AI" Version="9.5.0" />
-    
     <!-- Configuration -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
